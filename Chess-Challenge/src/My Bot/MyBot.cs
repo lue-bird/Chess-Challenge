@@ -30,13 +30,22 @@ public class MyBot : IChessBot
     {
         return
             board.IsInCheckmate() ?
-                double.NegativeInfinity
+                board.IsWhiteToMove ?
+                    double.NegativeInfinity
+                :
+                    double.PositiveInfinity
             : board.IsDraw() ?
                 0
             :
                 BoardPieces(board).Sum(PieceEvaluate);
     }
     public double PieceEvaluate(Piece piece) =>
+        piece.IsWhite ?
+            WhitePieceEvaluate(piece)
+        :
+            -WhitePieceEvaluate(piece);
+
+    public double WhitePieceEvaluate(Piece piece) =>
         piece.PieceType switch
         {
             PieceType.King => 4,
