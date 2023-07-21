@@ -8,15 +8,24 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         Move[] moves = board.GetLegalMoves();
-        return moves.MaxBy<Move, double>(move =>
-        {
-            board.MakeMove(move);
-            double evalAfterMove = BoardEvaluate(board);
-            board.UndoMove(move);
-            return evalAfterMove;
-        });
+
+        return
+            board.IsWhiteToMove ?
+                moves.MaxBy(move => MoveEvaluate(board, move))
+            :
+                moves.MinBy(move => MoveEvaluate(board, move));
     }
+    // evaluation:
     // positive = white is better, negative = black is better
+    public double MoveEvaluate(Board board, Move move)
+    {
+        board.MakeMove(move);
+        double evalAfterMove = BoardEvaluate(board);
+        board.UndoMove(move);
+        return evalAfterMove;
+    }
+
+
     public double BoardEvaluate(Board board)
     {
         return
