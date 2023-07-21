@@ -21,17 +21,8 @@ public class MyBot : IChessBot
     // positive = white is better, negative = black is better
     public double MoveEvaluate(Board board, Move move)
     {
-        Piece atTargetBefore = board.GetPiece(move.TargetSquare);
         board.MakeMove(move);
         double evalAfterMove = BoardEvaluate(board);
-        Console.WriteLine(move);
-        if (atTargetBefore != board.GetPiece(move.TargetSquare))
-        {
-            Console.WriteLine("changed target square");
-        }
-        if (move.IsNull) { Console.WriteLine("move is null"); }
-        if (move.IsCapture) { Console.WriteLine("move is capture of"); Console.WriteLine(move.CapturePieceType); }
-        Console.WriteLine(evalAfterMove);
         board.UndoMove(move);
         return evalAfterMove;
     }
