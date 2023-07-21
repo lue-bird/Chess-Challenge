@@ -9,18 +9,29 @@ public class MyBot : IChessBot
     {
         Move[] moves = board.GetLegalMoves();
 
-        return
+        Move chosenMove =
             board.IsWhiteToMove ?
                 moves.MaxBy(move => MoveEvaluate(board, move))
             :
                 moves.MinBy(move => MoveEvaluate(board, move));
+        Console.WriteLine("evaluation guess: " + MoveEvaluate(board, chosenMove));
+        return chosenMove;
     }
     // evaluation:
     // positive = white is better, negative = black is better
     public double MoveEvaluate(Board board, Move move)
     {
+        Piece atTargetBefore = board.GetPiece(move.TargetSquare);
         board.MakeMove(move);
         double evalAfterMove = BoardEvaluate(board);
+        Console.WriteLine(move);
+        if (atTargetBefore != board.GetPiece(move.TargetSquare))
+        {
+            Console.WriteLine("changed target square");
+        }
+        if (move.IsNull) { Console.WriteLine("move is null"); }
+        if (move.IsCapture) { Console.WriteLine("move is capture of"); Console.WriteLine(move.CapturePieceType); }
+        Console.WriteLine(evalAfterMove);
         board.UndoMove(move);
         return evalAfterMove;
     }
@@ -58,9 +69,17 @@ public class MyBot : IChessBot
         };
 
     IEnumerable<Piece> BoardPieces(Board board) =>
-        BoardSquares.Select((square, i_) => board.GetPiece(square));
+        BoardSquares.SelectMany<Square, Piece>((square, i_) =>
+        {
+            Piece atSquare = board.GetPiece(square);
+            return
+                atSquare.IsNull ?
+                    Enumerable.Empty<Piece>()
+                :
+                    new[] { atSquare };
+        });
 
 
     IEnumerable<Square> BoardSquares =
-        Enumerable.Range(0, 63).Select(i => new Square(i));
+        Enumerable.Range(0, 64).Select(i => new Square(i));
 }
