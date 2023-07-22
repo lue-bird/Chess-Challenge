@@ -56,14 +56,14 @@ public class MyBot : IChessBot
             0
         :
             // TODO past pawns
-            BoardPieces(board).Sum(piece => PieceIndependentEvaluate(board, piece))
+            PiecesIn(board, BoardSquares).Sum(piece => PieceIndependentEvaluate(board, piece))
                 + BoardControlEvaluate(board);
 
     double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
 
     double BoardControlEvaluate(Board board) =>
-        BoardPieces(board)
+        PiecesIn(board, BoardSquares)
             .SelectMany(piece => PieceControl(board, piece))
             .ToLookup(s => s.Key, s => s.Value)
             .Sum(s =>
@@ -136,17 +136,27 @@ public class MyBot : IChessBot
     Dictionary<Square, double> WalkRays(Board board, IEnumerable<IEnumerable<Square>> rays, double stability) =>
         rays
             .SelectMany(ray => WalkRay(board, ray))
-            .ToDictionary(s => s.Key, s => s.Value * stability);
+            .ToLookup(s => s.Key, s => s.Value)
+            .ToDictionary(s => s.Key, s => s.Sum() * stability);
 
-    Dictionary<Square, double> WalkRay(Board board, IEnumerable<Square> ray) =>
+    IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, IEnumerable<Square> ray) =>
         // TODO attacking higher-advantage pieces → higher advantage
         // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
         // TODO distribute defense and attack for the x-rayed squares.
-        null;
+        ray
+            .Aggregate(
+                (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
+                (soFar, square) =>
+                    (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
+                    , soFar.Item2.Append(new KeyValuePair<Square, double>(square, 1 / (1 + soFar.Item1)))
+                    )
+            )
+            .Item2;
 
     double XRay(Board board, IEnumerable<Square> squares) =>
         Math.Pow(1.0 + (PiecesIn(board, squares)).Count(), 0.5);
 
+    /// Convert relative coordinates from a given Square to an absolute square
     IEnumerable<Square> MovementSquaresFrom(Square from, IEnumerable<(int, int)> ray) =>
         ray
             .Select(movement =>
@@ -210,9 +220,6 @@ public class MyBot : IChessBot
          //     PieceType.King => 4,
          // }
          new[] { 0, 1, 2.9, 3.2, 4.5, 8.6, 4 }[(int)piece.PieceType];
-
-    IEnumerable<Piece> BoardPieces(Board board) =>
-        PiecesIn(board, BoardSquares);
 
     IEnumerable<Piece> PiecesIn(Board board, IEnumerable<Square> area) =>
         area
