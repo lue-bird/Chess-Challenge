@@ -19,7 +19,7 @@ public class MyBot : IChessBot
     }
     // evaluation:
     // positive = white is better, negative = black is better
-    public double MoveEvaluate(Board board, Move move)
+    double MoveEvaluate(Board board, Move move)
     {
         board.MakeMove(move);
         double evalAfterMove = BoardEvaluate(board);
@@ -27,45 +27,63 @@ public class MyBot : IChessBot
         return evalAfterMove;
     }
 
-    public double BoardEvaluate(Board board) =>
+    double BoardEvaluate(Board board) =>
         board.IsInCheckmate() ?
             AsAdvantageIfWhite(board.IsWhiteToMove, double.NegativeInfinity)
 
         : board.IsDraw() ?
             0
         :
-            BoardPieces(board).Sum(piece => SquareEvaluate(board, piece));
+            // TODO past pawns
+            BoardPieces(board).Sum(piece => SquareEvaluate(board, piece))
+                + BoardSquares.Sum(square => ControlOver(board, square));
 
-    public double SquareEvaluate(Board board, Piece piece) =>
+    double SquareEvaluate(Board board, Piece piece) =>
         AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
 
-    public double ControlOver(Board board, Square square) =>
-        BoardPieces(board).Sum(boardPiece =>
-            boardPiece.Square == square ?
-                0
-            :
-                // TODO: split protective power of piece
-                // TODO attacking higher-advantage pieces → higher advantage
-                // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-                AsAdvantageIfWhite(boardPiece.IsWhite, DefendsOrAttacksSquare(board, boardPiece, square))
-                    * (board.GetPiece(square).IsNull ?
-                        0.11
-                      : // equal color
-                        board.GetPiece(square).IsWhite == boardPiece.IsWhite ?
-                            0.6
-                        : // opposing colors
-                            1
-                      )
+    // TODO: split protective power of piece
+    // TODO attacking higher-advantage pieces → higher advantage
+    // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
+    double ControlOver(Board board, Square square)
+    {
+        IEnumerable<Piece> defenders =
+            BoardPieces(board)
+                .Where(piece => board.GetPiece(square).IsWhite == piece.IsWhite);
+        double defense =
+            AsAdvantageIfWhite(
+                board.GetPiece(square).IsWhite,
+                defenders
+                    .Sum(piece => DefendsOrAttacksSquare(board, piece, square))
+            );
+        IEnumerable<Piece> attackers =
+            BoardPieces(board)
+                .Where(piece => board.GetPiece(square).IsWhite != piece.IsWhite);
+        double attack =
+            AsAdvantageIfWhite(
+                !board.GetPiece(square).IsWhite,
+                attackers
+                    .Sum(piece => AsAdvantageIfWhite(piece.IsWhite, DefendsOrAttacksSquare(board, piece, square)))
             );
 
-    public double AsAdvantageIfWhite(bool isWhite, double advantage) =>
+        return
+            board.GetPiece(square).IsNull ?
+                defense * 0.105
+            : attack == 0 ?
+                defense * 0.24
+            : Math.Abs(defense) > Math.Abs(attack) ?
+                (defense + attack) * 0.33
+            :
+                defense + attack;
+    }
+
+    double AsAdvantageIfWhite(bool isWhite, double advantage) =>
         isWhite ?
             advantage
         :
             -advantage;
 
     /// Piece with null type if no movement possible
-    public double DefendsOrAttacksSquare(Board board, Piece piece, Square endSquare) =>
+    double DefendsOrAttacksSquare(Board board, Piece piece, Square endSquare) =>
         piece.PieceType switch
         {
             PieceType.King =>
@@ -77,10 +95,13 @@ public class MyBot : IChessBot
                 :
                     0,
             PieceType.Queen =>
-                // TODO divided by (pieces in between)^2
                 AreInDiagonal(piece.Square, endSquare) || AreInStraightLine(piece.Square, endSquare) ?
                     // queen protection not as strong
                     0.79
+                    * XRay(board,
+                        SquaresInDiagonalBetween(piece.Square, endSquare)
+                            .Concat(SquaresInStraightLineBetween(piece.Square, endSquare))
+                        )
                 :
                     0,
             PieceType.Knight =>
@@ -90,17 +111,15 @@ public class MyBot : IChessBot
                 :
                     0,
             PieceType.Bishop =>
-                // TODO divided by (pieces in between)^2
                 AreInDiagonal(piece.Square, endSquare) ?
                     // bishop protection ok
-                    1
+                    1 * XRay(board, SquaresInDiagonalBetween(piece.Square, endSquare))
                 :
                     0,
             PieceType.Rook =>
-                // TODO divided by (pieces in between)^2
                 AreInStraightLine(piece.Square, endSquare) ?
                     // rook protection not as strong
-                    0.9
+                    0.9 * XRay(board, SquaresInStraightLineBetween(piece.Square, endSquare))
                 :
                     0,
             PieceType.Pawn =>
@@ -115,7 +134,10 @@ public class MyBot : IChessBot
             PieceType.None => 0
         };
 
-    public bool AreInDiagonal(Square a, Square b) =>
+    double XRay(Board board, IEnumerable<Square> squares) =>
+        Math.Pow(1.0 + (PiecesIn(board, squares)).Count(), 0.5);
+
+    bool AreInDiagonal(Square a, Square b) =>
         (a.File + Math.Abs(b.Rank - a.Rank)
             == b.File
         )
@@ -123,14 +145,52 @@ public class MyBot : IChessBot
                     == b.File
                 );
 
-    public bool AreInStraightLine(Square a, Square b) =>
+    IEnumerable<Square> SquaresInDiagonalBetween(Square a, Square b) =>
+        RangeBetweenExclusive(0, Math.Abs(b.Rank - a.Rank))
+            .Select(distance =>
+                new Square(
+                    a.File + distance * Math.Sign(b.File - a.File),
+                    b.Rank + distance * Math.Sign(b.Rank - a.Rank)
+                )
+            )
+            .Where(IsSquareInsideBoard);
+    IEnumerable<Square> SquaresInStraightLineBetween(Square a, Square b) =>
+        a.Rank == b.Rank ?
+            RangeBetweenExclusive(0, Math.Abs(b.File - a.File))
+                .Select(distance =>
+                    new Square(
+                        a.File + distance * Math.Sign(b.File - a.File),
+                        b.Rank
+                    )
+                )
+                .Where(IsSquareInsideBoard)
+        :
+            RangeBetweenExclusive(0, Math.Abs(b.Rank - a.Rank))
+                .Select(distance =>
+                    new Square(
+                        a.File,
+                        b.Rank + distance * Math.Sign(b.Rank - a.Rank)
+                    )
+                )
+                .Where(IsSquareInsideBoard);
+    bool IsSquareInsideBoard(Square square) =>
+        (square.File >= 0 && square.File <= 7) && (square.Rank >= 0 && square.Rank <= 7);
+
+
+    IEnumerable<int> RangeBetweenExclusive(int aExclusive, int bExclusive) =>
+        bExclusive - aExclusive <= 2 ?
+            Enumerable.Empty<int>()
+        :
+            Enumerable.Range(aExclusive + 1, (bExclusive - aExclusive) - 1);
+
+    bool AreInStraightLine(Square a, Square b) =>
         (a.Rank == b.Rank) || (a.File == b.File);
 
-    public bool AreL(Square a, Square b) =>
+    bool AreL(Square a, Square b) =>
         (Math.Abs(a.Rank - b.Rank) == 1 && Math.Abs(a.File - b.File) == 2)
             || (Math.Abs(a.Rank - b.Rank) == 2 && Math.Abs(a.File - b.File) == 1);
 
-    public double PieceAdvantage(Piece piece) =>
+    double PieceAdvantage(Piece piece) =>
         piece.PieceType switch
         {
             PieceType.King => 4,
@@ -143,15 +203,12 @@ public class MyBot : IChessBot
         };
 
     IEnumerable<Piece> BoardPieces(Board board) =>
-        BoardSquares.SelectMany<Square, Piece>((square, i_) =>
-        {
-            Piece atSquare = board.GetPiece(square);
-            return
-                atSquare.IsNull ?
-                    Enumerable.Empty<Piece>()
-                :
-                    new[] { atSquare };
-        });
+        PiecesIn(board, BoardSquares);
+
+    IEnumerable<Piece> PiecesIn(Board board, IEnumerable<Square> area) =>
+        area
+            .Select((square, i_) => board.GetPiece(square))
+            .Where(piece => !piece.IsNull);
 
 
     IEnumerable<Square> BoardSquares =
