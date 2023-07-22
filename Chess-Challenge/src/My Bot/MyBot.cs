@@ -65,12 +65,8 @@ public class MyBot : IChessBot
         piece.PieceType switch
         {
             PieceType.King =>
-                ((Math.Abs(endSquare.File - piece.Square.File) == 1
-                    && (endSquare.Rank == piece.Square.Rank)
-                )
-                || (Math.Abs(endSquare.Rank - piece.Square.Rank) == 1
-                        && (endSquare.File == piece.Square.File)
-                    ))
+                Math.Abs(endSquare.File - piece.Square.File) <= 1
+                    && Math.Abs(endSquare.Rank - piece.Square.Rank) <= 1
                 ?
                     // cause king defense is a bit risky
                     0.72
@@ -78,33 +74,27 @@ public class MyBot : IChessBot
                     0,
             PieceType.Queen =>
                 // TODO divided by (pieces in between)^2
-                AreInDiagonal(piece.Square, endSquare) || AreInStraightLine(piece.Square, endSquare)
-                ?
+                AreInDiagonal(piece.Square, endSquare) || AreInStraightLine(piece.Square, endSquare) ?
                     // queen protection not as strong
                     0.79
                 :
                     0,
             PieceType.Knight =>
-                // TODO divided by (pieces in between)^2
-                // TODO
-                false
-                ?
+                AreL(piece.Square, endSquare) ?
                     // knight protection nice
                     1.13
                 :
                     0,
             PieceType.Bishop =>
                 // TODO divided by (pieces in between)^2
-                AreInDiagonal(piece.Square, endSquare)
-                ?
+                AreInDiagonal(piece.Square, endSquare) ?
                     // bishop protection ok
                     1
                 :
                     0,
             PieceType.Rook =>
                 // TODO divided by (pieces in between)^2
-                AreInStraightLine(piece.Square, endSquare)
-                ?
+                AreInStraightLine(piece.Square, endSquare) ?
                     // rook protection not as strong
                     0.9
                 :
@@ -112,9 +102,7 @@ public class MyBot : IChessBot
             PieceType.Pawn =>
                 // passant ignored for now
                 endSquare.Rank == (piece.Square.Rank + 1)
-                    && (endSquare.File == (piece.Square.File + 1))
-                        || (endSquare.File == (piece.Square.File - 1)
-                    )
+                    && (Math.Abs(endSquare.File - piece.Square.File) == 1)
                 ?
                     // pawn protection good protection
                     1.31
@@ -133,6 +121,10 @@ public class MyBot : IChessBot
 
     public bool AreInStraightLine(Square a, Square b) =>
         (a.Rank == b.Rank) || (a.File == b.File);
+
+    public bool AreL(Square a, Square b) =>
+        (Math.Abs(a.Rank - b.Rank) == 1 && Math.Abs(a.File - b.File) == 2)
+            || (Math.Abs(a.Rank - b.Rank) == 2 && Math.Abs(a.File - b.File) == 1);
 
     public double PieceAdvantage(Piece piece) =>
         piece.PieceType switch
