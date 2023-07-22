@@ -28,26 +28,113 @@ public class MyBot : IChessBot
     }
 
 
-    public double BoardEvaluate(Board board)
-    {
-        return
-            board.IsInCheckmate() ?
-                board.IsWhiteToMove ?
-                    double.NegativeInfinity
-                :
-                    double.PositiveInfinity
-            : board.IsDraw() ?
+    public double BoardEvaluate(Board board) =>
+        board.IsInCheckmate() ?
+            AsAdvantageIfWhite(board.IsWhiteToMove, double.NegativeInfinity)
+
+        : board.IsDraw() ?
+            0
+        :
+            BoardPieces(board).Sum(piece => SquareEvaluate(board, piece));
+
+    public double SquareEvaluate(Board board, Piece piece) =>
+        AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
+
+    public double ControlOver(Board board, Square square) =>
+        // TODO
+        BoardPieces(board).Sum(boardPiece =>
+            boardPiece.Square == square ?
                 0
             :
-                BoardPieces(board).Sum(PieceEvaluate);
-    }
-    public double PieceEvaluate(Piece piece) =>
-        piece.IsWhite ?
-            WhitePieceEvaluate(piece)
-        :
-            -WhitePieceEvaluate(piece);
+                // TODO empty square * 0.14
+                // TODO piece with same color * 0.5
+                // TODO opponent piece * 1
+                // TODO: split protective power of piece
+                AsAdvantageIfWhite(boardPiece.IsWhite, DefendsOrAttacksSquare(board, boardPiece, square))
 
-    public double WhitePieceEvaluate(Piece piece) =>
+            );
+
+    public double AsAdvantageIfWhite(bool isWhite, double advantage) =>
+        isWhite ?
+            advantage
+        :
+            -advantage;
+
+    /// Piece with null type if no movement possible
+    public double DefendsOrAttacksSquare(Board board, Piece piece, Square endSquare) =>
+        piece.PieceType switch
+        {
+            PieceType.King =>
+                ((Math.Abs(endSquare.File - piece.Square.File) == 1
+                    && (endSquare.Rank == piece.Square.Rank)
+                )
+                || (Math.Abs(endSquare.Rank - piece.Square.Rank) == 1
+                        && (endSquare.File == piece.Square.File)
+                    ))
+                ?
+                    // cause king defense is a bit risky
+                    0.72
+                :
+                    0,
+            PieceType.Queen =>
+                // TODO divided by (pieces in between)^2
+                AreInDiagonal(piece.Square, endSquare) || AreInStraightLine(piece.Square, endSquare)
+                ?
+                    // queen protection not as strong
+                    0.79
+                :
+                    0,
+            PieceType.Knight =>
+                // TODO divided by (pieces in between)^2
+                // TODO
+                false
+                ?
+                    // knight protection nice
+                    1.13
+                :
+                    0,
+            PieceType.Bishop =>
+                // TODO divided by (pieces in between)^2
+                AreInDiagonal(piece.Square, endSquare)
+                ?
+                    // bishop protection ok
+                    1
+                :
+                    0,
+            PieceType.Rook =>
+                // TODO divided by (pieces in between)^2
+                AreInStraightLine(piece.Square, endSquare)
+                ?
+                    // rook protection not as strong
+                    0.9
+                :
+                    0,
+            PieceType.Pawn =>
+                // passant ignored for now
+                endSquare.Rank == (piece.Square.Rank + 1)
+                    && (endSquare.File == (piece.Square.File + 1))
+                        || (endSquare.File == (piece.Square.File - 1)
+                    )
+                ?
+                    // pawn protection good protection
+                    1.31
+                :
+                    0,
+            PieceType.None => 0
+        };
+
+    public bool AreInDiagonal(Square a, Square b) =>
+        (a.File + Math.Abs(b.Rank - a.Rank)
+            == b.File
+        )
+            || (a.File - Math.Abs(b.Rank - a.Rank)
+                    == b.File
+                );
+
+    public bool AreInStraightLine(Square a, Square b) =>
+        (a.Rank == b.Rank) || (a.File == b.File);
+
+    public double PieceAdvantage(Piece piece) =>
         piece.PieceType switch
         {
             PieceType.King => 4,
