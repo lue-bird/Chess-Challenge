@@ -3,22 +3,43 @@ using System.Collections.Generic;
 using System.Linq;
 using ChessChallenge.API;
 
+/// <summary>
+/// engine name: massage
+/// 
+/// ## vocab used
+/// 
+/// ### Piece "controls" a Square
+/// That square is reachable with a move of that piece. Pins etc are not regarded.
+/// In practice there is
+/// - "cover": An empty square is controlled
+/// - "attack": An opponent piece is controlled
+/// - "defense": One of your own pieces is controlled
+/// 
+/// We call a directed movement axis that can be blocked by Pieces "ray".
+/// Example: rook movement to the left.
+/// Knights for example do not have rays because their movement can't be blocked/intercepted.
+/// 
+/// Whenever Pieces are in the way of movement to the desired square, we call the square in "x-ray"
+/// 
+/// ### advantage
+/// evaluation of a thing, relative to its own color.
+/// 
+/// ### evaluation
+/// positive = white is better, negative = black is better
+/// </summary>
 public class MyBot : IChessBot
 {
     public Move Think(Board board, Timer timer)
     {
-        Move[] moves = board.GetLegalMoves();
-
         Move chosenMove =
             board.IsWhiteToMove ?
-                moves.MaxBy(move => MoveEvaluate(board, move))
+                board.GetLegalMoves().MaxBy(move => MoveEvaluate(board, move))
             :
-                moves.MinBy(move => MoveEvaluate(board, move));
+                board.GetLegalMoves().MinBy(move => MoveEvaluate(board, move));
         Console.WriteLine("evaluation guess: " + MoveEvaluate(board, chosenMove));
         return chosenMove;
     }
-    // evaluation:
-    // positive = white is better, negative = black is better
+
     double MoveEvaluate(Board board, Move move)
     {
         board.MakeMove(move);
@@ -35,46 +56,66 @@ public class MyBot : IChessBot
             0
         :
             // TODO past pawns
-            BoardPieces(board).Sum(piece => SquareEvaluate(board, piece))
-                + BoardSquares.Sum(square => ControlOver(board, square));
+            BoardPieces(board).Sum(piece => PieceIndependentEvaluate(board, piece))
+                + BoardControlEvaluate(board);
 
-    double SquareEvaluate(Board board, Piece piece) =>
+    double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
 
-    // TODO: split protective power of piece
-    // TODO attacking higher-advantage pieces → higher advantage
-    // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-    double ControlOver(Board board, Square square)
-    {
-        IEnumerable<Piece> defenders =
-            BoardPieces(board)
-                .Where(piece => board.GetPiece(square).IsWhite == piece.IsWhite);
-        double defense =
-            AsAdvantageIfWhite(
-                board.GetPiece(square).IsWhite,
-                defenders
-                    .Sum(piece => DefendsOrAttacksSquare(board, piece, square))
-            );
-        IEnumerable<Piece> attackers =
-            BoardPieces(board)
-                .Where(piece => board.GetPiece(square).IsWhite != piece.IsWhite);
-        double attack =
-            AsAdvantageIfWhite(
-                !board.GetPiece(square).IsWhite,
-                attackers
-                    .Sum(piece => AsAdvantageIfWhite(piece.IsWhite, DefendsOrAttacksSquare(board, piece, square)))
-            );
+    double BoardControlEvaluate(Board board) =>
+        BoardPieces(board)
+            .SelectMany(piece => PieceControl(board, piece))
+            .ToLookup(s => s.Key, s => s.Value)
+            .Sum(s =>
+            {
+                Square square = s.Key;
+                var whites =
+                    s.Where(advantage => advantage >= 0);
+                var blacks =
+                    s.Where(advantage => advantage < 0);
+                double defense =
+                    board.GetPiece(square).IsWhite ? whites.Sum() : blacks.Sum();
+                double attack =
+                    board.GetPiece(square).IsWhite ? blacks.Sum() : whites.Sum();
+                return
+                board.GetPiece(s.Key).IsNull ?
+                    defense * 0.1
+                : attack == 0 ?
+                    defense * 0.21
+                : Math.Abs(defense) > Math.Abs(attack) ?
+                    (defense + attack) * 0.3
+                :
+                    defense + attack;
+            });
 
-        return
-            board.GetPiece(square).IsNull ?
-                defense * 0.105
-            : attack == 0 ?
-                defense * 0.24
-            : Math.Abs(defense) > Math.Abs(attack) ?
-                (defense + attack) * 0.33
-            :
-                defense + attack;
-    }
+    Dictionary<Square, double> PieceControl(Board board, Piece piece) =>
+        (piece.PieceType switch
+        {
+            PieceType.King =>
+                // cause king defense is a bit risky
+                WalkRays(board, SquaresAround(piece.Square).Select(square => new[] { square }), 0.72),
+            PieceType.Queen =>
+                // queen protection not as strong
+                WalkRays(
+                    board,
+                    SquaresDiagonal(piece.Square)
+                        .Concat(SquaresStraightLine(piece.Square)),
+                    0.79
+                ),
+            PieceType.Knight =>
+                // knight protection nice
+                WalkRays(board, LSquaresFrom(piece.Square).Select(square => new[] { square }), 1.13),
+            PieceType.Bishop =>
+                WalkRays(board, SquaresDiagonal(piece.Square), 1.01),
+            PieceType.Rook =>
+                WalkRays(board, SquaresStraightLine(piece.Square), 0.9),
+            PieceType.Pawn =>
+                // passant ignored
+                WalkRays(board, SquaresForwardLeftAndRight(piece).Select(square => new[] { square }), 1.31),
+            PieceType.None =>
+                new Dictionary<Square, double>()
+        })
+        .ToDictionary(s => s.Key, s => AsAdvantageIfWhite(piece.IsWhite, s.Value));
 
     double AsAdvantageIfWhite(bool isWhite, double advantage) =>
         isWhite ?
@@ -82,125 +123,93 @@ public class MyBot : IChessBot
         :
             -advantage;
 
-    /// Piece with null type if no movement possible
-    double DefendsOrAttacksSquare(Board board, Piece piece, Square endSquare) =>
-        piece.PieceType switch
-        {
-            PieceType.King =>
-                Math.Abs(endSquare.File - piece.Square.File) <= 1
-                    && Math.Abs(endSquare.Rank - piece.Square.Rank) <= 1
-                ?
-                    // cause king defense is a bit risky
-                    0.72
-                :
-                    0,
-            PieceType.Queen =>
-                AreInDiagonal(piece.Square, endSquare) || AreInStraightLine(piece.Square, endSquare) ?
-                    // queen protection not as strong
-                    0.79
-                    * XRay(board,
-                        SquaresInDiagonalBetween(piece.Square, endSquare)
-                            .Concat(SquaresInStraightLineBetween(piece.Square, endSquare))
-                        )
-                :
-                    0,
-            PieceType.Knight =>
-                AreL(piece.Square, endSquare) ?
-                    // knight protection nice
-                    1.13
-                :
-                    0,
-            PieceType.Bishop =>
-                AreInDiagonal(piece.Square, endSquare) ?
-                    // bishop protection ok
-                    1 * XRay(board, SquaresInDiagonalBetween(piece.Square, endSquare))
-                :
-                    0,
-            PieceType.Rook =>
-                AreInStraightLine(piece.Square, endSquare) ?
-                    // rook protection not as strong
-                    0.9 * XRay(board, SquaresInStraightLineBetween(piece.Square, endSquare))
-                :
-                    0,
-            PieceType.Pawn =>
-                // passant ignored for now
-                endSquare.Rank == (piece.Square.Rank + 1)
-                    && (Math.Abs(endSquare.File - piece.Square.File) == 1)
-                ?
-                    // pawn protection good protection
-                    1.31
-                :
-                    0,
-            PieceType.None => 0
-        };
+    /// <summary>
+    /// distribute control for all x-rayed squares of each ray
+    /// </summary>
+    /// <param name="board"></param>
+    /// <param name="rays"></param>
+    /// <param name="stability">
+    /// How sure you are that this cover can hold up over time.
+    /// For example a king covers with a low stability since king defense and attack is risky
+    /// </param>
+    /// <returns></returns>
+    Dictionary<Square, double> WalkRays(Board board, IEnumerable<IEnumerable<Square>> rays, double stability) =>
+        rays
+            .SelectMany(ray => WalkRay(board, ray))
+            .ToDictionary(s => s.Key, s => s.Value * stability);
+
+    Dictionary<Square, double> WalkRay(Board board, IEnumerable<Square> ray) =>
+        // TODO attacking higher-advantage pieces → higher advantage
+        // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
+        // TODO distribute defense and attack for the x-rayed squares.
+        null;
 
     double XRay(Board board, IEnumerable<Square> squares) =>
         Math.Pow(1.0 + (PiecesIn(board, squares)).Count(), 0.5);
 
-    bool AreInDiagonal(Square a, Square b) =>
-        (a.File + Math.Abs(b.Rank - a.Rank)
-            == b.File
-        )
-            || (a.File - Math.Abs(b.Rank - a.Rank)
-                    == b.File
-                );
-
-    IEnumerable<Square> SquaresInDiagonalBetween(Square a, Square b) =>
-        RangeBetweenExclusive(0, Math.Abs(b.Rank - a.Rank))
-            .Select(distance =>
-                new Square(
-                    a.File + distance * Math.Sign(b.File - a.File),
-                    b.Rank + distance * Math.Sign(b.Rank - a.Rank)
-                )
+    IEnumerable<Square> MovementSquaresFrom(Square from, IEnumerable<(int, int)> ray) =>
+        ray
+            .Select(movement =>
+                (from.File + movement.Item1, from.Rank + movement.Item1)
             )
-            .Where(IsSquareInsideBoard);
-    IEnumerable<Square> SquaresInStraightLineBetween(Square a, Square b) =>
-        a.Rank == b.Rank ?
-            RangeBetweenExclusive(0, Math.Abs(b.File - a.File))
-                .Select(distance =>
-                    new Square(
-                        a.File + distance * Math.Sign(b.File - a.File),
-                        b.Rank
-                    )
-                )
-                .Where(IsSquareInsideBoard)
-        :
-            RangeBetweenExclusive(0, Math.Abs(b.Rank - a.Rank))
-                .Select(distance =>
-                    new Square(
-                        a.File,
-                        b.Rank + distance * Math.Sign(b.Rank - a.Rank)
-                    )
-                )
-                .Where(IsSquareInsideBoard);
-    bool IsSquareInsideBoard(Square square) =>
-        (square.File >= 0 && square.File <= 7) && (square.Rank >= 0 && square.Rank <= 7);
+            .Where(square =>
+                (square.Item1 >= 0 && square.Item1 <= 7)
+                    && (square.Item2 >= 0 && square.Item2 <= 7)
+            )
+            .Select(square => new Square(square.Item1, square.Item2));
 
+    IEnumerable<IEnumerable<Square>> SquaresDiagonal(Square from) =>
+        new Func<int, (int, int)>[]
+            { d => (d, d), d => (-d, d)
+            , d => (d, -d), d => (-d, -d)
+            }
+            .Select(ray =>
+                MovementSquaresFrom(from, Enumerable.Range(1, 7).Select(ray))
+            );
+    IEnumerable<IEnumerable<Square>> SquaresStraightLine(Square from) =>
+        new Func<int, (int, int)>[]
+            { d => (d, 0), d => (-d, 0)
+            , d => (0, d), d => (0, -d)
+            }
+            .Select(ray =>
+                MovementSquaresFrom(from, Enumerable.Range(1, 7).Select(ray))
+            );
 
-    IEnumerable<int> RangeBetweenExclusive(int aExclusive, int bExclusive) =>
-        bExclusive - aExclusive <= 2 ?
-            Enumerable.Empty<int>()
-        :
-            Enumerable.Range(aExclusive + 1, (bExclusive - aExclusive) - 1);
-
-    bool AreInStraightLine(Square a, Square b) =>
-        (a.Rank == b.Rank) || (a.File == b.File);
-
-    bool AreL(Square a, Square b) =>
-        (Math.Abs(a.Rank - b.Rank) == 1 && Math.Abs(a.File - b.File) == 2)
-            || (Math.Abs(a.Rank - b.Rank) == 2 && Math.Abs(a.File - b.File) == 1);
+    IEnumerable<Square> SquaresAround(Square center) =>
+        MovementSquaresFrom(center, new[]
+            { (-1, -1), (-1, 0), (-1, 1)
+            , (0, -1)          , (0, 1)
+            , (1, -1) , (1, 0) , (1, 1)
+            }
+        );
+    IEnumerable<Square> SquaresForwardLeftAndRight(Piece pawn) =>
+        MovementSquaresFrom(pawn.Square,
+            pawn.IsWhite ?
+                new[] { (-1, 1), (1, 1) }
+            :
+                new[] { (-1, -1), (1, -1) }
+        );
+    IEnumerable<Square> LSquaresFrom(Square from) =>
+        MovementSquaresFrom(from, new[]
+            { (-1, -2), (-1, 2)
+            , (1, -2), (1, 2)
+            , (-2, -1), (-2, 1)
+            , (2, -1), (2, 1)
+            }
+        );
 
     double PieceAdvantage(Piece piece) =>
-        piece.PieceType switch
-        {
-            PieceType.King => 4,
-            PieceType.Queen => 8.6,
-            PieceType.Knight => 2.9,
-            PieceType.Bishop => 3.2,
-            PieceType.Rook => 4.5,
-            PieceType.Pawn => 1,
-            PieceType.None => 0
-        };
+         // piece.PieceType switch
+         // {
+         //     PieceType.None => 0,
+         //     PieceType.Pawn => 1,
+         //     PieceType.Knight => 2.9,
+         //     PieceType.Bishop => 3.2,
+         //     PieceType.Rook => 4.5,
+         //     PieceType.Queen => 8.6,
+         //     PieceType.King => 4,
+         // }
+         new[] { 0, 1, 2.9, 3.2, 4.5, 8.6, 4 }[(int)piece.PieceType];
 
     IEnumerable<Piece> BoardPieces(Board board) =>
         PiecesIn(board, BoardSquares);
