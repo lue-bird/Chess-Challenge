@@ -27,7 +27,6 @@ public class MyBot : IChessBot
         return evalAfterMove;
     }
 
-
     public double BoardEvaluate(Board board) =>
         board.IsInCheckmate() ?
             AsAdvantageIfWhite(board.IsWhiteToMove, double.NegativeInfinity)
@@ -41,17 +40,22 @@ public class MyBot : IChessBot
         AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
 
     public double ControlOver(Board board, Square square) =>
-        // TODO
         BoardPieces(board).Sum(boardPiece =>
             boardPiece.Square == square ?
                 0
             :
-                // TODO empty square * 0.14
-                // TODO piece with same color * 0.5
-                // TODO opponent piece * 1
                 // TODO: split protective power of piece
+                // TODO attacking higher-advantage pieces → higher advantage
+                // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
                 AsAdvantageIfWhite(boardPiece.IsWhite, DefendsOrAttacksSquare(board, boardPiece, square))
-
+                    * (board.GetPiece(square).IsNull ?
+                        0.11
+                      : // equal color
+                        board.GetPiece(square).IsWhite == boardPiece.IsWhite ?
+                            0.6
+                        : // opposing colors
+                            1
+                      )
             );
 
     public double AsAdvantageIfWhite(bool isWhite, double advantage) =>
