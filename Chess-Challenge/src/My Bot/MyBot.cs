@@ -95,28 +95,29 @@ public class MyBot : IChessBot
         WalkRays(
             board,
             piece.Square,
-            piece.PieceType switch
+            new[]
             {
-                King =>
-                    // cause king defense is a bit risky
-                    (movementNeighbors.Select(EnumerableOne), 0.72),
-                Queen =>
-                    // queen protection not as strong
-                    (movementDiagonal.Concat(movementStraight), 0.79),
-                Knight =>
-                    // knight protection nice
-                    (movementL.Select(EnumerableOne), 1.13),
-                Bishop =>
-                    (movementDiagonal, 1.01),
-                Rook =>
-                    (movementStraight, 0.9),
-                Pawn =>
+                // None =>
+                    // crazy how this is even possible in c#
+                    new(),
+                // Pawn =>
                     // passant ignored
                     (SquaresForwardLeftAndRight(piece).Select(EnumerableOne), 1.31),
-                None =>
-                    // crazy how this is even possible in c#
-                    new()
+                // Knight =>
+                    // knight protection nice
+                    (movementL.Select(EnumerableOne), 1.13),
+                // Bishop =>
+                    (movementDiagonal, 1.01),
+                // Rook =>
+                    (movementStraight, 0.9),
+                // Queen =>
+                    // queen protection not as strong
+                    (movementDiagonal.Concat(movementStraight), 0.79),
+                // King =>
+                    // cause king defense is a bit risky
+                    (movementNeighbors.Select(EnumerableOne), 0.72)
             }
+                [(int)piece.PieceType]
         )
             .ToDictionary(s => s.Key, s => AsAdvantageIfWhite(piece.IsWhite, s.Value));
 
