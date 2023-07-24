@@ -129,7 +129,6 @@ public class MyBot : IChessBot
     /// second Tuple item is the stability.
     /// How sure you are that this cover can hold up over time.
     /// For example a king covers with a low stability since king defense and attack is risky
-    /// </param>
     Dictionary<Square, double> WalkRays(Board board, Square from, (IEnumerable<Ray>, double) config) =>
         config.Item1
             .SelectMany(ray => WalkRay(board, from, ray))
