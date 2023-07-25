@@ -135,8 +135,7 @@ public class MyBot : IChessBot
     Dictionary<Square, double> WalkRays(Board board, Square from, (IEnumerable<Movement>, double) config) =>
         config.Item1
             .SelectMany(ray => WalkRay(board, from, ray))
-            .ToLookup(s => s.Key)
-            .ToDictionary(s => s.Key, squares => squares.Sum(square => square.Value) * config.Item2);
+            .ToDictionary(s => s.Key, s => s.Value * config.Item2);
 
     IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, Square from, Movement ray) =>
         // TODO attacking higher-advantage pieces → higher advantage
