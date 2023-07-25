@@ -62,7 +62,8 @@ public class MyBot : IChessBot
             0
         :
             // TODO past pawns
-            PiecesIn(board, BoardSquares).Sum(piece => PieceIndependentEvaluate(board, piece))
+            PiecesIn(board, BoardSquares)
+                .Sum(piece => PieceIndependentEvaluate(board, piece))
                 + BoardControlEvaluate(board);
 
     double PieceIndependentEvaluate(Board board, Piece piece) =>
@@ -82,7 +83,6 @@ public class MyBot : IChessBot
                 // TODO attacking higher-advantage pieces → higher advantage
                 // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
                 // TODO distribute defense and attack for the x-rayed squares.
-                // TODO if Piece with current color is attacked, then multiply min 1 by attacked piece advantage
                 var whites =
                     s.Where(advantage => advantage >= 0);
                 var blacks =
@@ -101,7 +101,12 @@ public class MyBot : IChessBot
                 : Abs(defense) >= Abs(attack) ?
                     (defense + attack) * 0.3
                 : // Abs(attack) >= Abs(defense)
-                    defense + attack;
+                    pieceAtSquare.IsWhite == board.IsWhiteToMove ?
+                        // TODO increase piece advantage by covered fields
+                        Clamp(defense + attack, -1, 1)
+                            * PieceAdvantage(pieceAtSquare)
+                    : // opponent piece is attacked
+                        defense + attack;
             });
     }
 
@@ -190,11 +195,16 @@ public class MyBot : IChessBot
                         new Square[] { };
             });
 
+    static int[] Signs =
+        new[] { -1, 1 };
+
     static Movement movementDirectionsDiagonal =
-        new[]
-            { (1, 1) , (-1, 1)
-            , (1, -1), (-1, -1)
-            };
+        // new[]
+        //     { (1, 1) , (-1, 1)
+        //     , (1, -1), (-1, -1)
+        //     };
+        Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
+
     IEnumerable<Movement> movementDiagonal =
         movementDirectionsDiagonal
             .Select(direction =>
@@ -202,11 +212,14 @@ public class MyBot : IChessBot
                     .Select(distance => (distance * direction.Item1, distance * direction.Item2))
             );
     static Movement movementDirectionsStraight =
-        new[]
-            {         (0,  1)
-            , (-1, 0),        (1, 0)
-            ,         (0, -1)
-            };
+         // Signs.Select(file => (file, 0))
+         //     .Concat(Signs.Select(rank => (0, rank)));
+         new[]
+             {         (0,  1)
+             , (-1, 0),        (1, 0)
+             ,         (0, -1)
+             };
+
     IEnumerable<Movement> movementStraight =
         movementDirectionsStraight
             .Select(direction =>
@@ -222,16 +235,22 @@ public class MyBot : IChessBot
         //     }
         movementDirectionsStraight.Concat(movementDirectionsDiagonal);
     Movement SquaresForwardLeftAndRight(Piece pawn) =>
-        new[] { -1, 1 }.Select(file => (file, pawn.IsWhite ? 1 : -1));
+        Signs.Select(file => (file, pawn.IsWhite ? 1 : -1));
 
     Movement movementL =
-        new[]
-            {     (-1, 2),       (1, 2)
-            , (-2, 1),              (2, 1)
-
-            , (-2, -1),             (2, -1)
-            ,     (-1, -2),     (1, -2)
-            };
+        //new[]
+        //    {     (-1, 2),       (1, 2)
+        //    , (-2, 1),              (2, 1)
+        //
+        //    , (-2, -1),             (2, -1)
+        //    ,     (-1, -2),     (1, -2)
+        //    };
+        movementDirectionsDiagonal
+            .Select(movement => (movement.Item1, 2 * movement.Item2))
+            .Concat(
+                movementDirectionsDiagonal
+                    .Select(movement => (2 * movement.Item1, movement.Item2))
+            );
 
     double PieceAdvantage(Piece piece) =>
         new[]
