@@ -37,6 +37,9 @@ public class MyBot : IChessBot
 {
     public Move Think(Board board, Timer timer)
     {
+        // TODO search
+        //     - breath first?
+        //     - search most forcing moves first
         Move chosenMove =
             board.IsWhiteToMove ?
                 board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(board, move))
@@ -182,8 +185,8 @@ public class MyBot : IChessBot
         ray
             .SelectMany(movement =>
             {
-                var file = from.File + movement.Item1;
-                var rank = from.Rank + movement.Item2;
+                int file = from.File + movement.Item1;
+                int rank = from.Rank + movement.Item2;
                 return
                     file is >= 0 and <= 7 && rank is >= 0 and <= 7
                     // saves 2 tokens over
@@ -206,11 +209,8 @@ public class MyBot : IChessBot
         Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
 
     IEnumerable<Movement> movementDiagonal =
-        movementDirectionsDiagonal
-            .Select(direction =>
-                Enumerable.Range(1, 7)
-                    .Select(distance => (distance * direction.Item1, distance * direction.Item2))
-            );
+        AlongDirections(movementDirectionsDiagonal);
+
     static Movement movementDirectionsStraight =
          // Signs.Select(file => (file, 0))
          //     .Concat(Signs.Select(rank => (0, rank)));
@@ -221,10 +221,15 @@ public class MyBot : IChessBot
              };
 
     IEnumerable<Movement> movementStraight =
-        movementDirectionsStraight
+        AlongDirections(movementDirectionsStraight);
+
+    static IEnumerable<Movement> AlongDirections(Movement directions) =>
+        directions
             .Select(direction =>
                 Enumerable.Range(1, 7)
-                    .Select(distance => (distance * direction.Item1, distance * direction.Item2))
+                    .Select(distance =>
+                        (distance * direction.Item1, distance * direction.Item2)
+                    )
             );
 
     Movement movementNeighbors =
