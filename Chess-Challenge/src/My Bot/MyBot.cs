@@ -242,7 +242,8 @@ public class MyBot : IChessBot
             4.5,
             //     Queen => 
             8.6,
-            //     King => 
+            //     King =>
+            // this number is pretty arbitrary, it just weighs king safety. Note that it doesn't weigh checkmate
             4
         }
             [(int)piece.PieceType];
