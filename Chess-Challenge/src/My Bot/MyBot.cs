@@ -68,31 +68,42 @@ public class MyBot : IChessBot
     double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
 
-    double BoardControlEvaluate(Board board) =>
-        PiecesIn(board, BoardSquares)
-            .SelectMany(piece => PieceControl(board, piece))
+    double BoardControlEvaluate(Board board)
+    {
+        var controlByPiece =
+            PiecesIn(board, BoardSquares)
+                .ToDictionary(piece => piece, piece => PieceControl(board, piece));
+        return
+        controlByPiece
+            .SelectMany(piece => piece.Value)
             .ToLookup(s => s.Key, s => s.Value)
             .Sum(s =>
             {
-                Square square = s.Key;
+                // TODO attacking higher-advantage pieces → higher advantage
+                // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
+                // TODO distribute defense and attack for the x-rayed squares.
+                // TODO if Piece with current color is attacked, then multiply min 1 by attacked piece advantage
                 var whites =
                     s.Where(advantage => advantage >= 0);
                 var blacks =
                     s.Where(advantage => advantage < 0);
+                Piece pieceAtSquare =
+                    board.GetPiece(s.Key);
                 double defense =
-                    (board.GetPiece(square).IsWhite ? whites : blacks).Sum();
+                    (pieceAtSquare.IsWhite ? whites : blacks).Sum();
                 double attack =
-                    (board.GetPiece(square).IsWhite ? blacks : whites).Sum();
+                    (pieceAtSquare.IsWhite ? blacks : whites).Sum();
                 return
-                board.GetPiece(s.Key).IsNull ?
+                pieceAtSquare.IsNull ?
                     defense * 0.1
                 : attack == 0 ?
                     defense * 0.21
-                : Abs(defense) > Math.Abs(attack) ?
+                : Abs(defense) >= Abs(attack) ?
                     (defense + attack) * 0.3
-                :
+                : // Abs(attack) >= Abs(defense)
                     defense + attack;
             });
+    }
 
     Dictionary<Square, double> PieceControl(Board board, Piece piece) =>
         WalkRays(
@@ -138,10 +149,6 @@ public class MyBot : IChessBot
             .ToDictionary(s => s.Key, s => s.Value * config.Item2);
 
     IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, Square from, Movement ray) =>
-        // TODO attacking higher-advantage pieces → higher advantage
-        // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-        // TODO distribute defense and attack for the x-rayed squares.
-        // TODO if Piece with current color is attacked, then multiply min 1 by attacked piece advantage
         // btw I wish c# had a scan/foldMap
         MovementSquaresFrom(from, ray)
             .Aggregate(
