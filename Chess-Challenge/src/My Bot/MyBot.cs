@@ -38,8 +38,9 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         // TODO search
-        //     - breath first?
         //     - search most forcing moves first
+        //     - breath first?
+        //     - alpha-beta?
         Move chosenMove =
             board.IsWhiteToMove ?
                 board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(board, move))
@@ -59,7 +60,7 @@ public class MyBot : IChessBot
 
     double BoardEvaluate(Board board) =>
         board.IsInCheckmate() ?
-            AsAdvantageIfWhite(board.IsWhiteToMove, double.NegativeInfinity)
+            AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
 
         : board.IsDraw() ?
             0
@@ -70,50 +71,60 @@ public class MyBot : IChessBot
                 + BoardControlEvaluate(board);
 
     double PieceIndependentEvaluate(Board board, Piece piece) =>
-        AsAdvantageIfWhite(piece.IsWhite, PieceAdvantage(piece));
+        AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece));
 
-    double BoardControlEvaluate(Board board)
-    {
-        var controlByPiece =
-            PiecesIn(board, BoardSquares)
-                .ToDictionary(piece => piece, piece => PieceControl(board, piece));
-        return
-        controlByPiece
-            .SelectMany(piece => piece.Value)
+    double BoardControlEvaluate(Board board) =>
+        PiecesIn(board, BoardSquares)
+            .SelectMany(piece =>
+                PieceControlAdvantage(board, piece)
+                    .Select(advantageBySquare =>
+                        new KeyValuePair<Square, (Piece, double)>(advantageBySquare.Key, (piece, advantageBySquare.Value))
+                    )
+            )
             .ToLookup(s => s.Key, s => s.Value)
-            .Sum(s =>
+            .Sum(squareControl =>
             {
                 // TODO attacking higher-advantage pieces → higher advantage
                 // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
                 // TODO distribute defense and attack for the x-rayed squares.
-                var whites =
-                    s.Where(advantage => advantage >= 0);
-                var blacks =
-                    s.Where(advantage => advantage < 0);
                 Piece pieceAtSquare =
-                    board.GetPiece(s.Key);
+                    board.GetPiece(squareControl.Key);
+                bool pieceAtSquareIsWhite =
+                    pieceAtSquare.IsWhite;
+                var defenders =
+                    squareControl.Where(advantage => advantage.Item1.IsWhite == pieceAtSquareIsWhite);
+                var attackers =
+                    squareControl.Except(defenders);
                 double defense =
-                    (pieceAtSquare.IsWhite ? whites : blacks).Sum();
+                    defenders.Sum(s => s.Item2);
                 double attack =
-                    (pieceAtSquare.IsWhite ? blacks : whites).Sum();
+                   attackers.Sum(s => s.Item2);
+                double defenseMinusAttack = defense - attack;
                 return
-                pieceAtSquare.IsNull ?
-                    defense * 0.1
-                : attack == 0 ?
-                    defense * 0.21
-                : Abs(defense) >= Abs(attack) ?
-                    (defense + attack) * 0.3
-                : // Abs(attack) >= Abs(defense)
-                    pieceAtSquare.IsWhite == board.IsWhiteToMove ?
-                        // TODO increase piece advantage by covered fields
-                        Clamp(defense + attack, -1, 1)
-                            * PieceAdvantage(pieceAtSquare)
-                    : // opponent piece is attacked
-                        defense + attack;
+                AsAdvantageForWhiteIf(
+                    pieceAtSquareIsWhite,
+                    pieceAtSquare.IsNull ?
+                        // we do kinda care for covered squares
+                        defenseMinusAttack * 0.13
+                    : attack == 0 ?
+                        // we care just a little about defending non-attacked pieces
+                        defenseMinusAttack * 0.16
+                    : defenseMinusAttack >= 0 ?
+                        // maybe increase factor based on how close defenseRemaining is to 0
+                        (defense - attack) * 0.34
+                    : // defenseRemaining < 0
+                      // in other words attack >= defense
+                        pieceAtSquareIsWhite == board.IsWhiteToMove ?
+                            // TODO increase piece advantage by covered fields
+                            Max(defenseMinusAttack, -1)
+                                * PieceAdvantage(pieceAtSquare)
+                        : // opponent piece is attacked
+                            defenseMinusAttack
+                );
             });
-    }
 
-    Dictionary<Square, double> PieceControl(Board board, Piece piece) =>
+    /// note that the resulting double values are positive and don't take Piece color into account
+    Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece) =>
         WalkRays(
             board,
             piece.Square,
@@ -141,9 +152,9 @@ public class MyBot : IChessBot
             }
                 [(int)piece.PieceType]
         )
-            .ToDictionary(s => s.Key, s => AsAdvantageIfWhite(piece.IsWhite, s.Value));
+            .ToDictionary(s => s.Key, s => s.Value);
 
-    double AsAdvantageIfWhite(bool isWhite, double advantage) =>
+    double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
         isWhite ? advantage : -advantage;
 
     /// distribute control for all x-rayed squares of each ray
