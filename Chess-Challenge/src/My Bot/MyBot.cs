@@ -1,10 +1,13 @@
 ﻿using System;
 using static System.Math;
-using static ChessChallenge.API.PieceType;
 using System.Collections.Generic;
 using System.Linq;
 using ChessChallenge.API;
-using Ray = System.Collections.Generic.IEnumerable<(int, int)>;
+// very sorry for using an alias because it's just token optimization,
+// but used for different things:
+//     - direction options
+//     - relative positions in a ray, increasing in distance
+using Movement = System.Collections.Generic.IEnumerable<(int, int)>;
 
 /// name: massage
 /// strategy: optimize piece activity
@@ -129,13 +132,13 @@ public class MyBot : IChessBot
     /// second Tuple item is the stability.
     /// How sure you are that this cover can hold up over time.
     /// For example a king covers with a low stability since king defense and attack is risky
-    Dictionary<Square, double> WalkRays(Board board, Square from, (IEnumerable<Ray>, double) config) =>
+    Dictionary<Square, double> WalkRays(Board board, Square from, (IEnumerable<Movement>, double) config) =>
         config.Item1
             .SelectMany(ray => WalkRay(board, from, ray))
             .ToLookup(s => s.Key)
             .ToDictionary(s => s.Key, squares => squares.Sum(square => square.Value) * config.Item2);
 
-    IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, Square from, Ray ray) =>
+    IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, Square from, Movement ray) =>
         // TODO attacking higher-advantage pieces → higher advantage
         // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
         // TODO distribute defense and attack for the x-rayed squares.
@@ -146,7 +149,7 @@ public class MyBot : IChessBot
                 (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
                 (soFar, square) =>
                     (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
-                    , soFar.Item2.Append(new KeyValuePair<Square, double>(square, 1 / (1 + soFar.Item1)))
+                    , soFar.Item2.Append(new(square, 1 / (1 + soFar.Item1)))
                     )
             )
             .Item2;
@@ -155,50 +158,73 @@ public class MyBot : IChessBot
         Pow(1.0 + (PiecesIn(board, squares)).Count(), 0.5);
 
     /// Convert relative coordinates from a given Square to an absolute square
-    IEnumerable<Square> MovementSquaresFrom(Square from, Ray ray) =>
+    IEnumerable<Square> MovementSquaresFrom(Square from, Movement ray) =>
+        // saves literally 1 token compared to
+        // ray
+        //     .Select(movement =>
+        //         (from.File + movement.Item1, from.Rank + movement.Item1)
+        //     )
+        //     .Where(square =>
+        //         (new[] { square.Item1, square.Item2 }.All(coordinate => coordinate is >= 0 and <= 7))
+        //     )
+        //     .Select(square => new Square(square.Item1, square.Item2));
         ray
-            .Select(movement =>
-                (from.File + movement.Item1, from.Rank + movement.Item1)
-            )
-            .Where(square =>
-                (new[] { square.Item1, square.Item2 }.All(coordinate => coordinate is >= 0 and <= 7))
-            )
-            .Select(square => new Square(square.Item1, square.Item2));
+            .SelectMany(movement =>
+            {
+                var file = from.File + movement.Item1;
+                var rank = from.Rank + movement.Item2;
+                return
+                    file is >= 0 and <= 7 && rank is >= 0 and <= 7
+                    // saves 2 tokens over
+                    // new[] { file, rank }.All(coordinate => coordinate is >= 0 and <= 7)
+                    ?
+                        EnumerableOne(new Square(file, rank))
+                    :
+                        // 2 tokens less than Enumerable.Empty<Square>();
+                        new Square[] { };
+            });
 
-    IEnumerable<Ray> movementDiagonal =
+    static Movement movementDirectionsDiagonal =
         new[]
-            { (1, 1), (-1, 1)
+            { (1, 1) , (-1, 1)
             , (1, -1), (-1, -1)
-            }
-            .Select(ray =>
+            };
+    IEnumerable<Movement> movementDiagonal =
+        movementDirectionsDiagonal
+            .Select(direction =>
                 Enumerable.Range(1, 7)
-                    .Select(distance => (distance * ray.Item1, distance * ray.Item2))
+                    .Select(distance => (distance * direction.Item1, distance * direction.Item2))
             );
-    IEnumerable<Ray> movementStraight =
+    static Movement movementDirectionsStraight =
         new[]
-            { (1, 0), (-1, 0)
-            , (0, 1), (0, -1)
-            }
-            .Select(ray =>
+            {         (0,  1)
+            , (-1, 0),        (1, 0)
+            ,         (0, -1)
+            };
+    IEnumerable<Movement> movementStraight =
+        movementDirectionsStraight
+            .Select(direction =>
                 Enumerable.Range(1, 7)
-                    .Select(distance => (distance * ray.Item1, distance * ray.Item2))
+                    .Select(distance => (distance * direction.Item1, distance * direction.Item2))
             );
 
-    Ray movementNeighbors =
-        new[]
-            { (-1, -1), (-1, 0), (-1, 1)
-            , (0, -1)          , (0, 1)
-            , (1, -1) , (1, 0) , (1, 1)
-            };
-    Ray SquaresForwardLeftAndRight(Piece pawn) =>
+    Movement movementNeighbors =
+        // new[]
+        //     { (-1, -1), (-1, 0), (-1, 1)
+        //     , ( 0, -1),          ( 0, 1)
+        //     , ( 1, -1), ( 1, 0), ( 1, 1)
+        //     }
+        movementDirectionsStraight.Concat(movementDirectionsDiagonal);
+    Movement SquaresForwardLeftAndRight(Piece pawn) =>
         new[] { -1, 1 }.Select(file => (file, pawn.IsWhite ? 1 : -1));
 
-    Ray movementL =
+    Movement movementL =
         new[]
-            { (-1, -2), (-1, 2)
-            , (1, -2), (1, 2)
-            , (-2, -1), (-2, 1)
-            , (2, -1), (2, 1)
+            {     (-1, 2),       (1, 2)
+            , (-2, 1),              (2, 1)
+
+            , (-2, -1),             (2, -1)
+            ,     (-1, -2),     (1, -2)
             };
 
     double PieceAdvantage(Piece piece) =>
