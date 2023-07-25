@@ -73,12 +73,21 @@ public class MyBot : IChessBot
     double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece));
 
-    double BoardControlEvaluate(Board board) =>
-        PiecesIn(board, BoardSquares)
+    double BoardControlEvaluate(Board board)
+    {
+        var controlByPiece =
+            PiecesIn(board, BoardSquares)
+            .ToDictionary(
+                piece => piece,
+                piece => PieceControlAdvantage(board, piece)
+            );
+        return
+        controlByPiece
             .SelectMany(piece =>
-                PieceControlAdvantage(board, piece)
-                    .Select(advantageBySquare =>
-                        new KeyValuePair<Square, (Piece, double)>(advantageBySquare.Key, (piece, advantageBySquare.Value))
+                piece.Value
+                    .ToDictionary(
+                        advantageBySquare => advantageBySquare.Key,
+                        advantageBySquare => (piece.Key, advantageBySquare.Value)
                     )
             )
             .ToLookup(s => s.Key, s => s.Value)
@@ -87,6 +96,7 @@ public class MyBot : IChessBot
                 // TODO attacking higher-advantage pieces → higher advantage
                 // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
                 // TODO distribute defense and attack for the x-rayed squares.
+                // TODO if a piece is attacked more often than defended, don't distribute attack control and cover from it
                 Piece pieceAtSquare =
                     board.GetPiece(squareControl.Key);
                 bool pieceAtSquareIsWhite =
@@ -122,6 +132,7 @@ public class MyBot : IChessBot
                             defenseMinusAttack
                 );
             });
+    }
 
     /// note that the resulting double values are positive and don't take Piece color into account
     Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece) =>
@@ -162,7 +173,10 @@ public class MyBot : IChessBot
     /// second Tuple item is the stability.
     /// How sure you are that this cover can hold up over time.
     /// For example a king covers with a low stability since king defense and attack is risky
-    Dictionary<Square, double> WalkRays(Board board, Square from, (IEnumerable<Movement>, double) config) =>
+    Dictionary<Square, double> WalkRays(
+        Board board, Square from,
+        (IEnumerable<Movement>, double) config
+    ) =>
         config.Item1
             .SelectMany(ray => WalkRay(board, from, ray))
             .ToDictionary(s => s.Key, s => s.Value * config.Item2);
