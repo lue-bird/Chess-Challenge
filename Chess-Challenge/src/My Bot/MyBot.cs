@@ -39,14 +39,14 @@ public class MyBot : IChessBot
     {
         Move chosenMove =
             board.IsWhiteToMove ?
-                board.GetLegalMoves().MaxBy(move => MoveEvaluate(board, move))
+                board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(board, move))
             :
-                board.GetLegalMoves().MinBy(move => MoveEvaluate(board, move));
-        Console.WriteLine("evaluation guess: " + MoveEvaluate(board, chosenMove));
+                board.GetLegalMoves().MinBy(move => AfterMoveEvaluate(board, move));
+        Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(board, chosenMove));
         return chosenMove;
     }
 
-    double MoveEvaluate(Board board, Move move)
+    double AfterMoveEvaluate(Board board, Move move)
     {
         board.MakeMove(move);
         double evalAfterMove = BoardEvaluate(board);
