@@ -179,12 +179,13 @@ public class MyBot : IChessBot
 
     IEnumerable<KeyValuePair<Square, double>> ControlAlongRay(Board board, Square from, Movement ray) =>
         // btw I wish c# had a scan/foldMap
+        // TODO decrease stability by square-distance from origin → interception tactics
         MovementSquaresFrom(from, ray)
             .Aggregate(
                 (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
                 (soFar, square) =>
                     (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
-                    , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.8)))
+                    , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.2)))
                     )
             )
             .Item2;
