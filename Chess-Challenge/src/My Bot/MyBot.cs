@@ -257,7 +257,7 @@ public class MyBot : IChessBot
         //      };
         Signs.SelectMany(side => new[] { (side, 0), (0, side) });
 
-    static IEnumerable<Movement> AlongDirections(Movement directions) =>
+    IEnumerable<Movement> AlongDirections(Movement directions) =>
         directions
             .Select(direction =>
                 Enumerable.Range(1, 7)
