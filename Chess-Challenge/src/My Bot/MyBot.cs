@@ -192,13 +192,10 @@ public class MyBot : IChessBot
                 (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
                 (soFar, square) =>
                     (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
-                    , soFar.Item2.Append(new(square, 1 / (1 + soFar.Item1)))
+                    , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.8)))
                     )
             )
             .Item2;
-
-    double XRay(Board board, IEnumerable<Square> squares) =>
-        Pow(1.0 + (PiecesIn(board, squares)).Count(), 0.5);
 
     /// Convert relative coordinates from a given Square to an absolute square
     IEnumerable<Square> MovementSquaresFrom(Square from, Movement ray) =>
