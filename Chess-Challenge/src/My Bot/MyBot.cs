@@ -155,22 +155,13 @@ public class MyBot : IChessBot
                     (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
                 // Knight =>
                     (
-                    //new[]
-                    //    {     (-1, 2),       (1, 2)
-                    //    , (-2, 1),              (2, 1)
-                    //
-                    //    , (-2, -1),             (2, -1)
-                    //    ,     (-1, -2),     (1, -2)
-                    //    };
-                    // or
-                    //new [] { (1,2), (2,1) }
-                    //    .SelectMany(factor =>
-                    //        movementDirectionsDiagonal
-                    //            .Select(movement =>
-                    //                (movement.Item1 * factor.Item1, movement.Item2 * factor.Item2)
-                    //            )
-                    //    );
-                    // which has 8 tokens more than
+                    // new[]
+                    //     {     (-1, 2),       (1, 2)
+                    //     , (-2, 1),              (2, 1)
+                    // 
+                    //     , (-2, -1),             (2, -1)
+                    //     ,     (-1, -2),     (1, -2)
+                    //     }
                     movementDirectionsDiagonal
                         .SelectMany(movement =>
                         {
@@ -255,7 +246,8 @@ public class MyBot : IChessBot
         //     { (1, 1) , (-1, 1)
         //     , (1, -1), (-1, -1)
         //     };
-        Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
+        Signs.SelectMany(file => new[] { (file, 1), (file, -1) });
+
 
     static Movement movementDirectionsStraight =
         // new[]
