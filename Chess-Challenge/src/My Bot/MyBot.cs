@@ -139,10 +139,12 @@ public class MyBot : IChessBot
     }
 
     /// note that the resulting double values are positive and don't take Piece color into account
-    Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece) =>
-        WalkRays(
-            board,
-            piece.Square,
+    Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece)
+    {
+        /// stability:
+        /// How sure you are that this cover can hold up over time.
+        /// For example a king covers with a low stability since king defense and attack is risky
+        var (rays, stability) =
             new[]
             {
                 // None =>
@@ -165,27 +167,17 @@ public class MyBot : IChessBot
                     // cause king defense is a bit risky
                     (movementNeighbors.Select(EnumerableOne), 0.72)
             }
-                [(int)piece.PieceType]
-        )
-            .ToDictionary(s => s.Key, s => s.Value);
+                [(int)piece.PieceType];
+        return
+        rays
+            .SelectMany(ray => ControlAlongRay(board, piece.Square, ray))
+            .ToDictionary(s => s.Key, s => s.Value * stability);
+    }
 
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
         isWhite ? advantage : -advantage;
 
-    /// distribute control for all x-rayed squares of each ray
-    /// first tuple item is the rays,
-    /// second Tuple item is the stability.
-    /// How sure you are that this cover can hold up over time.
-    /// For example a king covers with a low stability since king defense and attack is risky
-    Dictionary<Square, double> WalkRays(
-        Board board, Square from,
-        (IEnumerable<Movement>, double) config
-    ) =>
-        config.Item1
-            .SelectMany(ray => WalkRay(board, from, ray))
-            .ToDictionary(s => s.Key, s => s.Value * config.Item2);
-
-    IEnumerable<KeyValuePair<Square, double>> WalkRay(Board board, Square from, Movement ray) =>
+    IEnumerable<KeyValuePair<Square, double>> ControlAlongRay(Board board, Square from, Movement ray) =>
         // btw I wish c# had a scan/foldMap
         MovementSquaresFrom(from, ray)
             .Aggregate(
