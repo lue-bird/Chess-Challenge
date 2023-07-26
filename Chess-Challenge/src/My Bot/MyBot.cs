@@ -199,7 +199,7 @@ public class MyBot : IChessBot
                     .Aggregate(
                         (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
                         (soFar, square) =>
-                            (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
+                            (soFar.Item1 + (board.GetPiece(square).IsNull ? 0 : 1)
                             , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.2)))
                             )
                     )
