@@ -269,12 +269,25 @@ public class MyBot : IChessBot
         //    , (-2, -1),             (2, -1)
         //    ,     (-1, -2),     (1, -2)
         //    };
+        // or
+        //new [] { (1,2), (2,1) }
+        //    .SelectMany(factor =>
+        //        movementDirectionsDiagonal
+        //            .Select(movement =>
+        //                (movement.Item1 * factor.Item1, movement.Item2 * factor.Item2)
+        //            )
+        //    );
+        // which has 8 tokens more than
         movementDirectionsDiagonal
-            .Select(movement => (movement.Item1, 2 * movement.Item2))
-            .Concat(
-                movementDirectionsDiagonal
-                    .Select(movement => (2 * movement.Item1, movement.Item2))
-            );
+            .SelectMany(movement =>
+            {
+                var (file, rank) = movement;
+                return
+                    new[]
+                    { (file, rank * 2)
+                    , (2 * file, rank)
+                    };
+            });
 
     double PieceAdvantage(Piece piece) =>
         new[]
@@ -297,11 +310,13 @@ public class MyBot : IChessBot
         }
             [(int)piece.PieceType];
 
+    /// all pieces excluding those of PieceKind.None
     IEnumerable<Piece> PiecesIn(Board board, IEnumerable<Square> area) =>
         area
             .Select(square => board.GetPiece(square))
             .Where(piece => !piece.IsNull);
 
+    /// all 64 Squares of the Board
     IEnumerable<Square> BoardSquares =
         Enumerable.Range(0, 64).Select(i => new Square(i));
 
