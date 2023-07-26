@@ -157,14 +157,14 @@ public class MyBot : IChessBot
                     // knight protection nice
                     (movementL.Select(EnumerableOne), 1.13),
                 // Bishop =>
-                    (movementDiagonal, 1.01),
+                    (AlongDirections(movementDirectionsDiagonal), 1.01),
                 // Rook =>
-                    (movementStraight, 0.9),
+                    (AlongDirections(movementDirectionsStraight), 0.9),
                 // Queen =>
-                    // queen protection not as strong
-                    (movementDiagonal.Concat(movementStraight), 0.79),
+                    // queen protection not as strong because it can be chased away more easily
+                    (AlongDirections(movementNeighbors), 0.79),
                 // King =>
-                    // cause king defense is a bit risky
+                    // cause king defense is risky
                     (movementNeighbors.Select(EnumerableOne), 0.72)
             }
                 [(int)piece.PieceType];
@@ -227,9 +227,6 @@ public class MyBot : IChessBot
         //     };
         Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
 
-    IEnumerable<Movement> movementDiagonal =
-        AlongDirections(movementDirectionsDiagonal);
-
     static Movement movementDirectionsStraight =
          // Signs.Select(file => (file, 0))
          //     .Concat(Signs.Select(rank => (0, rank)));
@@ -238,9 +235,6 @@ public class MyBot : IChessBot
              , (-1, 0),        (1, 0)
              ,         (0, -1)
              };
-
-    IEnumerable<Movement> movementStraight =
-        AlongDirections(movementDirectionsStraight);
 
     static IEnumerable<Movement> AlongDirections(Movement directions) =>
         directions
@@ -258,6 +252,7 @@ public class MyBot : IChessBot
         //     , ( 1, -1), ( 1, 0), ( 1, 1)
         //     }
         movementDirectionsStraight.Concat(movementDirectionsDiagonal);
+
     Movement SquaresForwardLeftAndRight(Piece pawn) =>
         Signs.Select(file => (file, pawn.IsWhite ? 1 : -1));
 
