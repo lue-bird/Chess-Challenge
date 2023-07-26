@@ -66,6 +66,8 @@ public class MyBot : IChessBot
             0
         :
             // TODO past pawns
+            // TODO prefer heavies and minors near opponent king
+            // TODO encourage covering squares near king
             PiecesIn(board, BoardSquares)
                 .Sum(piece => PieceIndependentEvaluate(board, piece))
                 + BoardControlEvaluate(board);
@@ -77,10 +79,10 @@ public class MyBot : IChessBot
     {
         var controlByPiece =
             PiecesIn(board, BoardSquares)
-            .ToDictionary(
-                piece => piece,
-                piece => PieceControlAdvantage(board, piece)
-            );
+                .ToDictionary(
+                    piece => piece,
+                    piece => PieceControlAdvantage(board, piece)
+                );
         return
         controlByPiece
             .SelectMany(piece =>
@@ -122,12 +124,14 @@ public class MyBot : IChessBot
                     : defenseMinusAttack >= 0 ?
                         // maybe increase factor based on how close defenseRemaining is to 0
                         (defense - attack) * 0.34
-                    : // defenseRemaining < 0
+                    : // defenseMinusAttack < 0
                       // in other words attack >= defense
                         pieceAtSquareIsWhite == board.IsWhiteToMove ?
                             // TODO increase piece advantage by covered fields
                             Max(defenseMinusAttack, -1)
                                 * PieceAdvantage(pieceAtSquare)
+                                // TODO likewise, value covering and non-attacks less
+                                - controlByPiece.GetValueOrDefault(pieceAtSquare).Values.Sum()
                         : // opponent piece is attacked
                             defenseMinusAttack
                 );
