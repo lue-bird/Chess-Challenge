@@ -191,25 +191,25 @@ public class MyBot : IChessBot
                 [(int)piece.PieceType];
         return
         rays
-            .SelectMany(ray => ControlAlongRay(board, piece.Square, ray))
+            .SelectMany(ray =>
+                // control along ray
+                // btw I wish c# had a scan/foldMap
+                // TODO decrease stability by square-distance from origin → interception tactics
+                MovementSquaresFrom(piece.Square, ray)
+                    .Aggregate(
+                        (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
+                        (soFar, square) =>
+                            (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
+                            , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.2)))
+                            )
+                    )
+                    .Item2
+            )
             .ToDictionary(s => s.Key, s => s.Value * stability);
     }
 
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
         isWhite ? advantage : -advantage;
-
-    IEnumerable<KeyValuePair<Square, double>> ControlAlongRay(Board board, Square from, Movement ray) =>
-        // btw I wish c# had a scan/foldMap
-        // TODO decrease stability by square-distance from origin → interception tactics
-        MovementSquaresFrom(from, ray)
-            .Aggregate(
-                (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
-                (soFar, square) =>
-                    (board.GetPiece(square).IsNull ? soFar.Item1 : soFar.Item1 + 1
-                    , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.2)))
-                    )
-            )
-            .Item2;
 
     /// Convert relative coordinates from a given Square to an absolute square
     IEnumerable<Square> MovementSquaresFrom(Square from, Movement ray) =>
@@ -228,13 +228,12 @@ public class MyBot : IChessBot
                 int file = from.File + movement.Item1;
                 int rank = from.Rank + movement.Item2;
                 return
-                    file is >= 0 and <= 7 && rank is >= 0 and <= 7
-                    // saves 2 tokens over
                     // new[] { file, rank }.All(coordinate => coordinate is >= 0 and <= 7)
+                    file is >= 0 and <= 7 && rank is >= 0 and <= 7
                     ?
                         EnumerableOne(new Square(file, rank))
                     :
-                        // 2 tokens less than Enumerable.Empty<Square>();
+                        // Enumerable.Empty<Square>();
                         new Square[] { };
             });
 
