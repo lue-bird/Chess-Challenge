@@ -197,15 +197,15 @@ public class MyBot : IChessBot
                 // TODO decrease stability by square-distance from origin → interception tactics
                 MovementSquaresFrom(piece.Square, ray)
                     .Aggregate(
-                        (0, Enumerable.Empty<KeyValuePair<Square, double>>()),
+                        (0, Enumerable.Empty<(Square, double)>()),
                         (soFar, square) =>
                             (soFar.Item1 + (board.GetPiece(square).IsNull ? 0 : 1)
-                            , soFar.Item2.Append(new(square, Pow(1 + soFar.Item1, -1.2)))
+                            , soFar.Item2.Append((square, Pow(1 + soFar.Item1, -1.2)))
                             )
                     )
                     .Item2
             )
-            .ToDictionary(s => s.Key, s => s.Value * stability);
+            .ToDictionary(s => s.Item1, s => s.Item2 * stability);
     }
 
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
