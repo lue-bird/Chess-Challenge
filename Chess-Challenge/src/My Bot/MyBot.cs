@@ -258,14 +258,11 @@ public class MyBot : IChessBot
         Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
 
     static Movement movementDirectionsStraight =
-
         // new[]
         //      {         (0,  1)
         //      , (-1, 0),        (1, 0)
         //      ,         (0, -1)
         //      };
-        // Signs.Select(file => (file, 0))
-        //     .Concat(Signs.Select(rank => (0, rank)));
         Signs.SelectMany(side => new[] { (side, 0), (0, side) });
 
     static IEnumerable<Movement> AlongDirections(Movement directions) =>
