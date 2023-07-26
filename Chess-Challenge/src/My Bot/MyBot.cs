@@ -152,10 +152,40 @@ public class MyBot : IChessBot
                     new(),
                 // Pawn =>
                     // passant ignored
-                    (SquaresForwardLeftAndRight(piece).Select(EnumerableOne), 1.31),
+                    (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
                 // Knight =>
-                    // knight protection nice
-                    (movementL.Select(EnumerableOne), 1.13),
+                    (
+                    //new[]
+                    //    {     (-1, 2),       (1, 2)
+                    //    , (-2, 1),              (2, 1)
+                    //
+                    //    , (-2, -1),             (2, -1)
+                    //    ,     (-1, -2),     (1, -2)
+                    //    };
+                    // or
+                    //new [] { (1,2), (2,1) }
+                    //    .SelectMany(factor =>
+                    //        movementDirectionsDiagonal
+                    //            .Select(movement =>
+                    //                (movement.Item1 * factor.Item1, movement.Item2 * factor.Item2)
+                    //            )
+                    //    );
+                    // which has 8 tokens more than
+                    movementDirectionsDiagonal
+                        .SelectMany(movement =>
+                        {
+                            var (file, rank) = movement;
+                            return
+                                new[]
+                                { (file, rank * 2)
+                                , (2 * file, rank)
+                                };
+                        })
+                        .Select(EnumerableOne)
+                    ,
+                    // knight protection nice because it can't be intercepted
+                    1.13
+                    ),
                 // Bishop =>
                     (AlongDirections(movementDirectionsDiagonal), 1.01),
                 // Rook =>
@@ -252,37 +282,6 @@ public class MyBot : IChessBot
         //     , ( 1, -1), ( 1, 0), ( 1, 1)
         //     }
         movementDirectionsStraight.Concat(movementDirectionsDiagonal);
-
-    Movement SquaresForwardLeftAndRight(Piece pawn) =>
-        Signs.Select(file => (file, pawn.IsWhite ? 1 : -1));
-
-    Movement movementL =
-        //new[]
-        //    {     (-1, 2),       (1, 2)
-        //    , (-2, 1),              (2, 1)
-        //
-        //    , (-2, -1),             (2, -1)
-        //    ,     (-1, -2),     (1, -2)
-        //    };
-        // or
-        //new [] { (1,2), (2,1) }
-        //    .SelectMany(factor =>
-        //        movementDirectionsDiagonal
-        //            .Select(movement =>
-        //                (movement.Item1 * factor.Item1, movement.Item2 * factor.Item2)
-        //            )
-        //    );
-        // which has 8 tokens more than
-        movementDirectionsDiagonal
-            .SelectMany(movement =>
-            {
-                var (file, rank) = movement;
-                return
-                    new[]
-                    { (file, rank * 2)
-                    , (2 * file, rank)
-                    };
-            });
 
     double PieceAdvantage(Piece piece) =>
         new[]
