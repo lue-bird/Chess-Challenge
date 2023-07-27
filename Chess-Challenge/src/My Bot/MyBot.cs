@@ -89,11 +89,15 @@ public class MyBot : IChessBot
     ) =>
         Enumerable.Range(0, Max(defenders.Count(), attackers.Count()))
             .Aggregate(
-                // ( currentSquareValue, currentMaterialBalance, balanceBestForAttackers )
-                (currentSquareValue, 0.0, currentSquareValue),
+                // ( material value of the piece on the focused square: double
+                // , current material balance (positive = better for defenders): double
+                // , best material balance found for attack capture chain: double
+                // )
+                (currentSquareValue, 0.0, 0.0),
                 (soFar, i) =>
                 {
-                    double newBalance = soFar.Item2 + attackers.ElementAtOrDefault(i) - soFar.Item1;
+                    double newBalance =
+                        soFar.Item2 + attackers.ElementAtOrDefault(i) - soFar.Item1;
                     return
                         (defenders.ElementAtOrDefault(i)
                         , newBalance
