@@ -82,6 +82,28 @@ public class MyBot : IChessBot
     double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece));
 
+    double BestForAttackersInCaptureChain(
+        double[] defenders,
+        double[] attackers,
+        double currentSquareValue
+    ) =>
+        Enumerable.Range(0, Max(defenders.Count(), attackers.Count()))
+            .Aggregate(
+                // ( currentSquareValue, currentMaterialBalance, balanceBestForAttackers )
+                (currentSquareValue, 0.0, currentSquareValue),
+                (soFar, i) =>
+                {
+                    double newBalance = soFar.Item2 + attackers.ElementAtOrDefault(i) - soFar.Item1;
+                    return
+                        (defenders.ElementAtOrDefault(i)
+                        , newBalance
+                        , Min(soFar.Item3, newBalance)
+                        );
+                }
+            )
+            .Item3;
+
+
     double BoardControlEvaluate(Board board)
     {
         var controlByPiece =
@@ -103,8 +125,11 @@ public class MyBot : IChessBot
             {
                 // TODO attacking higher-advantage pieces → higher advantage
                 // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-                // TODO distribute defense and attack for the x-rayed squares.
-                // TODO if a piece is attacked more often than defended, don't distribute attack control and cover from it
+                // TODO if a piece is attacked more often than defended, remove its attack control and cover from it
+                // TODO: capture chain: order both by PieceAdvantageIndependent and zip them
+                //       start with the PieceAdvantageIndependent(first attacker) - PieceAdvantageIndependent(pieceAtSquare)
+                //       if at any point the balance is negative, save and restart
+                //       |> take the biggest negative balance
                 Piece pieceAtSquare =
                     board.GetPiece(squareControl.Key);
                 bool pieceAtSquareIsWhite =
@@ -113,11 +138,24 @@ public class MyBot : IChessBot
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attack =
                     squareControl.Except(defense);
-                double defenseAdvantage =
-                    defense.Sum(s => s.Item2);
-                double attackAdvantage =
-                    attack.Sum(s => s.Item2);
-                double defenseMinusAttack = defenseAdvantage - attackAdvantage;
+                double
+                    defenseAdvantage =
+                        defense.Sum(s => s.Item2),
+                    attackAdvantage =
+                        attack.Sum(s => s.Item2),
+                    captureChainBestAttack =
+                        BestForAttackersInCaptureChain(
+                            defense
+                                .Select(cover => PieceAdvantage(cover.Item1))
+                                .OrderBy(value => value)
+                                .ToArray(),
+                            attack
+                                .Select(cover => PieceAdvantage(cover.Item1))
+                                .OrderBy(value => value)
+                                .ToArray(),
+                            PieceAdvantage(pieceAtSquare)
+                        ),
+                    defenseMinusAttack = defenseAdvantage - attackAdvantage;
                 // if (defenseMinusAttack < -0.2 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
                 // {
                 //     Console.WriteLine("hanging piece " + pieceAtSquare + " attacked by " + String.Join(", ", attackers) + " defended by " + String.Join(", ", defenders));
@@ -128,18 +166,14 @@ public class MyBot : IChessBot
                     pieceAtSquare.IsNull ?
                         // we do kinda care for covered squares
                         defenseMinusAttack * 0.13
-                    : attackAdvantage == 0 ?
+                    : attackAdvantage <= 0.16 ?
                         // we care just a little about defending non-attacked pieces
                         defenseMinusAttack * 0.16
-                    : defenseMinusAttack >= -0.2 ?
-                        // maybe increase factor based on how close defenseRemaining is to 0
-                        defenseMinusAttack * 0.34
-                    : // defenseMinusAttack < -0.2
-                      // in other words attack >= defense
+                    : captureChainBestAttack >= 0 ?
+                        -captureChainBestAttack * 0.34
+                    : // captureChainBestAttack < 0
                         pieceAtSquareIsWhite != board.IsWhiteToMove ?
-                            // TODO increase piece advantage by covered fields
-                            Max(defenseMinusAttack, -1)
-                                * PieceAdvantage(pieceAtSquare)
+                            captureChainBestAttack
                                 // TODO likewise, value covering and non-attacks less
                                 - controlByPiece.GetValueOrDefault(pieceAtSquare).Values.Sum()
                         : // opponent piece is attacked
@@ -252,20 +286,12 @@ public class MyBot : IChessBot
 
     /// Convert relative coordinates from a given Square to an absolute square
     IEnumerable<Square> MovementSquaresFrom(Square from, Movement ray) =>
-        // saves literally 1 token compared to
-        // ray
-        //     .Select(movement =>
-        //         (from.File + movement.Item1, from.Rank + movement.Item1)
-        //     )
-        //     .Where(square =>
-        //         (new[] { square.Item1, square.Item2 }.All(coordinate => coordinate is >= 0 and <= 7))
-        //     )
-        //     .Select(square => new Square(square.Item1, square.Item2));
         ray
             .SelectMany(movement =>
             {
-                int file = from.File + movement.Item1;
-                int rank = from.Rank + movement.Item2;
+                int
+                    file = from.File + movement.Item1,
+                    rank = from.Rank + movement.Item2;
                 return
                     // new[] { file, rank }.All(coordinate => coordinate is >= 0 and <= 7)
                     file is >= 0 and <= 7 && rank is >= 0 and <= 7
