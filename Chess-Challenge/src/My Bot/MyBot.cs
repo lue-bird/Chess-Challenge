@@ -217,11 +217,13 @@ public class MyBot : IChessBot
                                         // Knight =>
                                         0.6,
                                         // Bishop =>
-                                        0.9,
+                                        // bishop can look through queen
+                                        piece.IsQueen ? 0 : 0.9,
                                         // Rook =>
-                                        1,
+                                        // rook can look through rook and queen
+                                        piece.IsRook || piece.IsQueen ? 0 : 1,
                                         // Queen =>
-                                        0.8,
+                                        piece.IsBishop || piece.IsRook ? 0 : 0.8,
                                         // King =>
                                         0.88
                                     }
