@@ -197,16 +197,46 @@ public class MyBot : IChessBot
             .SelectMany(ray =>
                 // control along ray
                 // btw I wish c# had a scan/foldMap/mapAccum
-                // TODO decrease stability by square-distance from origin → interception tactics
                 MovementSquaresFrom(piece.Square, ray)
                     .Aggregate(
-                        (0, Enumerable.Empty<(Square, double)>()),
+                        // ( current index: int
+                        // , how blocking pieces in the way are: double
+                        // , resulting control by square in the ray: IEnumerable<(Square, double)>
+                        // )
+                        (1, 0.0, Enumerable.Empty<(Square, double)>()),
                         (soFar, square) =>
-                            (soFar.Item1 + (board.GetPiece(square).IsNull ? 0 : 1)
-                            , soFar.Item2.Append((square, Pow(1 + soFar.Item1, -1.2)))
+                            (soFar.Item1 + 1
+                            , soFar.Item2
+                                // increase depending on piece immobility
+                                + new[]
+                                    {
+                                        // None =>
+                                        0,
+                                        // Pawn =>
+                                        1.9,
+                                        // Knight =>
+                                        0.6,
+                                        // Bishop =>
+                                        0.9,
+                                        // Rook =>
+                                        1,
+                                        // Queen =>
+                                        0.8,
+                                        // King =>
+                                        0.88
+                                    }
+                                    [(int)board.GetPiece(square).PieceType]
+                            , soFar.Item3.Append(
+                                (square
+                                , // decrease control by count of blocking pieces
+                                  Pow(1 + soFar.Item2 * 2, -1.2)
+                                  // decrease stability by square-distance from origin → interception tactics
+                                  * Pow(1 + soFar.Item1, -0.45)
+                                )
+                              )
                             )
                     )
-                    .Item2
+                    .Item3
             )
             .ToDictionary(s => s.Item1, s => s.Item2 * stability);
     }
