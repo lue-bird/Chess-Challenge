@@ -96,10 +96,21 @@ public class MyBot : IChessBot
                 (currentSquareValue, 0.0, 0.0),
                 (soFar, i) =>
                 {
-                    double newBalance =
-                        soFar.Item2 + attackers.ElementAtOrDefault(i) - soFar.Item1;
+                    var attackerValue = attackers.ElementAtOrDefault(i);
+                    if (attackerValue is 0)
+                        return
+                            (0
+                            , soFar.Item2 + soFar.Item1
+                            , soFar.Item3 + soFar.Item1
+                            );
+                    // attackerValue > 0
+                    var defenderValue = defenders.ElementAtOrDefault(i);
+                    var newBalance =
+                        soFar.Item2 - soFar.Item1
+                        +
+                        defenderValue is 0 ? 0 : attackerValue;
                     return
-                        (defenders.ElementAtOrDefault(i)
+                        (defenderValue
                         , newBalance
                         , Min(soFar.Item3, newBalance)
                         );
@@ -147,13 +158,16 @@ public class MyBot : IChessBot
                         defense.Sum(s => s.Item2),
                     attackAdvantage =
                         attack.Sum(s => s.Item2),
+                    // direct captures, ignoring x-raying attackers and defenders
                     captureChainBestAttack =
                         BestForAttackersInCaptureChain(
                             defense
+                                .Where(cover => cover.Item2 >= 0.6)
                                 .Select(cover => PieceAdvantage(cover.Item1))
                                 .OrderBy(value => value)
                                 .ToArray(),
                             attack
+                                .Where(cover => cover.Item2 >= 0.6)
                                 .Select(cover => PieceAdvantage(cover.Item1))
                                 .OrderBy(value => value)
                                 .ToArray(),
@@ -358,8 +372,10 @@ public class MyBot : IChessBot
             //     Queen => 
             8.6,
             //     King =>
-            // this number is pretty arbitrary, it just weighs king safety. Note that it doesn't weigh checkmate
-            4
+            // This number is a bit special.
+            // In effect it forces king captures to be last in a capture chain.
+            // Note that it doesn't weigh checkmate or king safety
+            10000
         }
             [(int)piece.PieceType];
 
