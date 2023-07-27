@@ -87,12 +87,11 @@ public class MyBot : IChessBot
         controlByPiece
             .SelectMany(piece =>
                 piece.Value
-                    .ToDictionary(
-                        advantageBySquare => advantageBySquare.Key,
-                        advantageBySquare => (piece.Key, advantageBySquare.Value)
+                    .Select(advantageBySquare =>
+                        (advantageBySquare.Key, (piece.Key, advantageBySquare.Value))
                     )
             )
-            .ToLookup(s => s.Key, s => s.Value)
+            .ToLookup(s => s.Item1, s => s.Item2)
             .Sum(squareControl =>
             {
                 // TODO attacking higher-advantage pieces → higher advantage
@@ -104,14 +103,18 @@ public class MyBot : IChessBot
                 bool pieceAtSquareIsWhite =
                     pieceAtSquare.IsWhite;
                 var defenders =
-                    squareControl.Where(advantage => advantage.Item1.IsWhite == pieceAtSquareIsWhite);
+                    squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attackers =
-                    squareControl.Except(defenders);
+                    squareControl.Where(control => control.Item1.IsWhite != pieceAtSquareIsWhite); //.Except(defenders);
                 double defense =
                     defenders.Sum(s => s.Item2);
                 double attack =
-                   attackers.Sum(s => s.Item2);
+                    attackers.Sum(s => s.Item2);
                 double defenseMinusAttack = defense - attack;
+                // if (defenseMinusAttack < -0.5 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
+                // {
+                //     Console.WriteLine("hanging piece " + pieceAtSquare + " attacked by " + String.Join(", ", attackers) + " defended by " + String.Join(", ", defenders));
+                // }
                 return
                 AsAdvantageForWhiteIf(
                     pieceAtSquareIsWhite,
@@ -121,12 +124,12 @@ public class MyBot : IChessBot
                     : attack == 0 ?
                         // we care just a little about defending non-attacked pieces
                         defenseMinusAttack * 0.16
-                    : defenseMinusAttack >= 0 ?
+                    : defenseMinusAttack >= -0.2 ?
                         // maybe increase factor based on how close defenseRemaining is to 0
-                        (defense - attack) * 0.34
-                    : // defenseMinusAttack < 0
+                        defenseMinusAttack * 0.34
+                    : // defenseMinusAttack < -0.2
                       // in other words attack >= defense
-                        pieceAtSquareIsWhite == board.IsWhiteToMove ?
+                        pieceAtSquareIsWhite != board.IsWhiteToMove ?
                             // TODO increase piece advantage by covered fields
                             Max(defenseMinusAttack, -1)
                                 * PieceAdvantage(pieceAtSquare)
@@ -193,7 +196,7 @@ public class MyBot : IChessBot
         rays
             .SelectMany(ray =>
                 // control along ray
-                // btw I wish c# had a scan/foldMap
+                // btw I wish c# had a scan/foldMap/mapAccum
                 // TODO decrease stability by square-distance from origin → interception tactics
                 MovementSquaresFrom(piece.Square, ray)
                     .Aggregate(
