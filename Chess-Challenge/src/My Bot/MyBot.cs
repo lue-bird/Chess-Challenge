@@ -22,11 +22,16 @@ using Movement = System.Collections.Generic.IEnumerable<(int, int)>;
 /// - "attack": An opponent piece is controlled
 /// - "defense": One of your own pieces is controlled
 /// 
-/// We call a directed movement axis that can be blocked by Pieces "ray".
+/// #### ray
+/// A directed movement axis that can be blocked by Pieces
 /// Example: rook movement to the left.
 /// Knights for example do not have rays because their movement can't be blocked/intercepted.
 /// 
 /// Whenever Pieces are in the way of movement to the desired square, we call the square in "x-ray"
+/// 
+/// #### cover stability:
+/// How sure you are that this cover can hold up over time.
+/// For example a king covers with a low stability since king defense and attack is risky
 /// 
 /// ### advantage
 /// evaluation of a thing, relative to its own color.
@@ -65,8 +70,10 @@ public class MyBot : IChessBot
         : board.IsDraw() ?
             0
         :
+            // TODO advanced pawns
             // TODO past pawns
             // TODO prefer heavies and minors near opponent king
+            // TODO advantage when pawns near king, bishop and knight only give small advantage
             // TODO encourage covering squares near king
             PiecesIn(board, BoardSquares)
                 .Sum(piece => PieceIndependentEvaluate(board, piece))
@@ -102,16 +109,16 @@ public class MyBot : IChessBot
                     board.GetPiece(squareControl.Key);
                 bool pieceAtSquareIsWhite =
                     pieceAtSquare.IsWhite;
-                var defenders =
+                var defense =
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
-                var attackers =
-                    squareControl.Where(control => control.Item1.IsWhite != pieceAtSquareIsWhite); //.Except(defenders);
-                double defense =
-                    defenders.Sum(s => s.Item2);
-                double attack =
-                    attackers.Sum(s => s.Item2);
-                double defenseMinusAttack = defense - attack;
-                // if (defenseMinusAttack < -0.5 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
+                var attack =
+                    squareControl.Except(defense);
+                double defenseAdvantage =
+                    defense.Sum(s => s.Item2);
+                double attackAdvantage =
+                    attack.Sum(s => s.Item2);
+                double defenseMinusAttack = defenseAdvantage - attackAdvantage;
+                // if (defenseMinusAttack < -0.2 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
                 // {
                 //     Console.WriteLine("hanging piece " + pieceAtSquare + " attacked by " + String.Join(", ", attackers) + " defended by " + String.Join(", ", defenders));
                 // }
@@ -121,7 +128,7 @@ public class MyBot : IChessBot
                     pieceAtSquare.IsNull ?
                         // we do kinda care for covered squares
                         defenseMinusAttack * 0.13
-                    : attack == 0 ?
+                    : attackAdvantage == 0 ?
                         // we care just a little about defending non-attacked pieces
                         defenseMinusAttack * 0.16
                     : defenseMinusAttack >= -0.2 ?
@@ -144,9 +151,6 @@ public class MyBot : IChessBot
     /// note that the resulting double values are positive and don't take Piece color into account
     Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece)
     {
-        /// stability:
-        /// How sure you are that this cover can hold up over time.
-        /// For example a king covers with a low stability since king defense and attack is risky
         var (rays, stability) =
             new[]
             {
