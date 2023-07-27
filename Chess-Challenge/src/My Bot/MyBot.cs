@@ -98,25 +98,24 @@ public class MyBot : IChessBot
                 {
                     double
                         focusValue = soFar.Item1,
-                        attackerValue = attackers.ElementAtOrDefault(i);
-                    if (attackerValue is 0)
-                        return
-                            (0
-                            , soFar.Item2 + focusValue
-                            , soFar.Item3 + focusValue
-                            );
-                    // attackerValue > 0
-                    double
+                        attackerValue = attackers.ElementAtOrDefault(i),
                         defenderValue = defenders.ElementAtOrDefault(i),
-                        newBalance =
+                        newBalanceIfAttackerExists =
                             soFar.Item2 - focusValue
                             +
                             defenderValue is 0 ? 0 : attackerValue;
                     return
-                        (defenderValue
-                        , newBalance
-                        , Min(soFar.Item3, newBalance)
-                        );
+                        attackerValue is 0 ?
+                            (0
+                            , soFar.Item2 + focusValue
+                            , soFar.Item3 + focusValue
+                            )
+                        :
+                            // attackerValue > 0
+                            (defenderValue
+                            , newBalanceIfAttackerExists
+                            , Min(soFar.Item3, newBalanceIfAttackerExists)
+                            );
                 }
             )
             .Item3;
