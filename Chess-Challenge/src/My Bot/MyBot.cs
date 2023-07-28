@@ -82,44 +82,6 @@ public class MyBot : IChessBot
     double PieceIndependentEvaluate(Board board, Piece piece) =>
         AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece));
 
-    double BestForAttackersInCaptureChain(
-        double[] defenders,
-        double[] attackers,
-        double currentSquareValue
-    ) =>
-        Enumerable.Range(0, Max(defenders.Count(), attackers.Count()))
-            .Aggregate(
-                // ( material value of the piece on the focused square: double
-                // , current material balance (positive = better for defenders): double
-                // , best material balance found for attack capture chain: double
-                // )
-                (currentSquareValue, 0.0, 0.0),
-                (soFar, i) =>
-                {
-                    double
-                        focusValue = soFar.Item1,
-                        attackerValue = attackers.ElementAtOrDefault(i),
-                        defenderValue = defenders.ElementAtOrDefault(i),
-                        newBalanceIfAttackerExists =
-                            soFar.Item2 - focusValue
-                            +
-                            defenderValue is 0 ? 0 : attackerValue;
-                    return
-                        attackerValue is 0 ?
-                            (0
-                            , soFar.Item2 + focusValue
-                            , soFar.Item3 + focusValue
-                            )
-                        :
-                            // attackerValue > 0
-                            (defenderValue
-                            , newBalanceIfAttackerExists
-                            , Min(soFar.Item3, newBalanceIfAttackerExists)
-                            );
-                }
-            )
-            .Item3;
-
 
     double BoardControlEvaluate(Board board)
     {
@@ -155,26 +117,59 @@ public class MyBot : IChessBot
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attack =
                     squareControl.Except(defense);
+                double[]
+                    defenders =
+                        defense
+                            .Where(cover => cover.Item2 >= 0.6)
+                            .Select(cover => PieceAdvantage(cover.Item1))
+                            .OrderBy(value => value)
+                            .ToArray(),
+                    attackers =
+                        attack
+                            .Where(cover => cover.Item2 >= 0.6)
+                            .Select(cover => PieceAdvantage(cover.Item1))
+                            .OrderBy(value => value)
+                            .ToArray();
                 double
                     defenseAdvantage =
                         defense.Sum(s => s.Item2),
                     attackAdvantage =
                         attack.Sum(s => s.Item2),
                     // direct captures, ignoring x-raying attackers and defenders
+                    // positive means the defense always has an advantage after capturing back
                     captureChainBestAttack =
-                        BestForAttackersInCaptureChain(
-                            defense
-                                .Where(cover => cover.Item2 >= 0.6)
-                                .Select(cover => PieceAdvantage(cover.Item1))
-                                .OrderBy(value => value)
-                                .ToArray(),
-                            attack
-                                .Where(cover => cover.Item2 >= 0.6)
-                                .Select(cover => PieceAdvantage(cover.Item1))
-                                .OrderBy(value => value)
-                                .ToArray(),
-                            PieceAdvantage(pieceAtSquare)
-                        ),
+                        Enumerable.Range(0, Max(defenders.Count(), attackers.Count()))
+                            .Aggregate(
+                                // ( material value of the piece on the focused square: double
+                                // , current material balance (positive = better for defenders): double
+                                // , best material balance found for attack capture chain: double
+                                // )
+                                (PieceAdvantage(pieceAtSquare), 0.0, 0.0),
+                                (soFar, i) =>
+                                {
+                                    double
+                                        focusValue = soFar.Item1,
+                                        attackerValue = attackers.ElementAtOrDefault(i),
+                                        defenderValue = defenders.ElementAtOrDefault(i),
+                                        newBalanceIfAttackerExists =
+                                            soFar.Item2 - focusValue
+                                            +
+                                            defenderValue is 0 ? 0 : attackerValue;
+                                    return
+                                        attackerValue is 0 ?
+                                            (0
+                                            , soFar.Item2 + focusValue
+                                            , soFar.Item3 + focusValue
+                                            )
+                                        :
+                                            // attackerValue > 0
+                                            (defenderValue
+                                            , newBalanceIfAttackerExists
+                                            , Min(soFar.Item3, newBalanceIfAttackerExists)
+                                            );
+                                }
+                            )
+                            .Item3,
                     defenseMinusAttack = defenseAdvantage - attackAdvantage;
                 // if (defenseMinusAttack < -0.2 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
                 // {
