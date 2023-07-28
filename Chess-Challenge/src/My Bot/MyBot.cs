@@ -179,9 +179,8 @@ public class MyBot : IChessBot
                         -captureChainBestAttack * 0.34
                     : // captureChainBestAttack < 0
                         pieceAtSquareIsWhite != board.IsWhiteToMove ?
+                            // TODO erase control of captured pieces
                             captureChainBestAttack
-                        // TODO likewise, value covering and non-attacks less
-                        // - controlByPiece.GetValueOrDefault(pieceAtSquare).Values.Sum()
                         : // opponent piece is attacked
                             defenseMinusAttack
                 );
@@ -236,23 +235,32 @@ public class MyBot : IChessBot
                     (movementNeighbors.Select(EnumerableOne), 0.72)
             }
                 [(int)piece.PieceType];
-        return
-        rays
-            .SelectMany(ray =>
-                // control along ray
-                // btw I wish c# had a scan/foldMap/mapAccum
-                MovementSquaresFrom(piece.Square, ray)
-                    .Aggregate(
-                        // ( current index: int
-                        // , how blocking pieces in the way are: double
-                        // , resulting control by square in the ray: IEnumerable<(Square, double)>
-                        // )
-                        (1, 0.0, Enumerable.Empty<(Square, double)>()),
-                        (soFar, square) =>
-                            (soFar.Item1 + 1
-                            , soFar.Item2
-                                // increase depending on piece immobility
-                                + new[]
+
+        Dictionary<Square, double> controlBySquare = new();
+        foreach (Movement ray in rays)
+            // control along ray
+            // btw I wish c# had a scan/foldMap/mapAccum
+            MovementSquaresFrom(piece.Square, ray)
+                .Select((square, index) => (index, square))
+                .Aggregate(
+                    // how blocking the pieces in the way are: double
+                    0.0,
+                    (soFar, square) =>
+                    {
+                        controlBySquare.Add(
+                            square.Item2,
+                            // decrease control by count of blocking pieces
+                            Pow(1 + soFar * 2.1, -1.3)
+                                // decrease stability by square-distance from origin → interception tactics
+                                * Pow(1.0 + square.Item1, -0.118)
+                                * stability
+                        );
+                        var pieceAtSquare = board.GetPiece(square.Item2);
+                        return
+                        soFar
+                            // increase depending on piece immobility
+                            + (pieceAtSquare.IsWhite == piece.IsWhite ?
+                                new[]
                                     {
                                         // None =>
                                         0,
@@ -269,22 +277,32 @@ public class MyBot : IChessBot
                                         // Queen =>
                                         piece.IsBishop || piece.IsRook ? 0 : 0.8,
                                         // King =>
-                                        0.88
+                                        0.8
                                     }
-                                    [(int)board.GetPiece(square).PieceType]
-                            , soFar.Item3.Append(
-                                (square
-                                , // decrease control by count of blocking pieces
-                                  Pow(1 + soFar.Item2 * 2, -1.2)
-                                  // decrease stability by square-distance from origin → interception tactics
-                                  * Pow(1 + soFar.Item1, -0.118)
-                                )
-                              )
+                            :
+                                // opposing color
+                                new[]
+                                    {
+                                        // None =>
+                                        0,
+                                        // Pawn =>
+                                        1.7,
+                                        // Knight =>
+                                        1.1,
+                                        // Bishop =>
+                                        1.1,
+                                        // Rook =>
+                                        1,
+                                        // Queen =>
+                                        0.8,
+                                        // King =>
+                                        -0.1
+                                    }
                             )
-                    )
-                    .Item3
-            )
-            .ToDictionary(s => s.Item1, s => s.Item2 * stability);
+                                [(int)pieceAtSquare.PieceType];
+                    }
+                );
+        return controlBySquare;
     }
 
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
