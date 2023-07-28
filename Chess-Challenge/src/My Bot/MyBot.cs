@@ -76,11 +76,8 @@ public class MyBot : IChessBot
             // TODO advantage when pawns near king, bishop and knight only give small advantage
             // TODO encourage covering squares near king
             PiecesIn(board, BoardSquares)
-                .Sum(piece => PieceIndependentEvaluate(board, piece))
+                .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
                 + BoardControlEvaluate(board);
-
-    double PieceIndependentEvaluate(Board board, Piece piece) =>
-        AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece));
 
 
     double BoardControlEvaluate(Board board)
