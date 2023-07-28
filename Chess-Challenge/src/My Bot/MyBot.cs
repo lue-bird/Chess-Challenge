@@ -114,24 +114,23 @@ public class MyBot : IChessBot
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attack =
                     squareControl.Except(defense);
-                double[]
-                    defenders =
-                        defense
-                            .Where(cover => cover.Item2 >= 0.6)
-                            .Select(cover => PieceAdvantage(cover.Item1))
-                            .OrderBy(value => value)
-                            .ToArray(),
-                    attackers =
-                        attack
-                            .Where(cover => cover.Item2 >= 0.6)
-                            .Select(cover => PieceAdvantage(cover.Item1))
-                            .OrderBy(value => value)
-                            .ToArray();
+                var defenders =
+                    defense
+                        .Where(cover => cover.Item2 >= 0.55)
+                        .Select(cover => PieceAdvantage(cover.Item1))
+                        .OrderBy(value => value);
+                var attackers =
+                    attack
+                        .Where(cover => cover.Item2 >= 0.55)
+                        .Select(cover => PieceAdvantage(cover.Item1))
+                        .OrderBy(value => value);
                 double
                     defenseAdvantage =
                         defense.Sum(s => s.Item2),
                     attackAdvantage =
                         attack.Sum(s => s.Item2),
+                    defenseMinusAttack =
+                        defenseAdvantage - attackAdvantage,
                     // direct captures, ignoring x-raying attackers and defenders
                     // positive means the defense always has an advantage after capturing back
                     captureChainBestAttack =
@@ -151,7 +150,7 @@ public class MyBot : IChessBot
                                         newBalanceIfAttackerExists =
                                             soFar.Item2 - focusValue
                                             +
-                                            defenderValue is 0 ? 0 : attackerValue;
+                                            (defenderValue is 0 ? 0 : attackerValue);
                                     return
                                         attackerValue is 0 ?
                                             (0
@@ -166,12 +165,7 @@ public class MyBot : IChessBot
                                             );
                                 }
                             )
-                            .Item3,
-                    defenseMinusAttack = defenseAdvantage - attackAdvantage;
-                // if (defenseMinusAttack < -0.2 && !pieceAtSquare.IsNull && pieceAtSquareIsWhite != board.IsWhiteToMove)
-                // {
-                //     Console.WriteLine("hanging piece " + pieceAtSquare + " attacked by " + String.Join(", ", attackers) + " defended by " + String.Join(", ", defenders));
-                // }
+                            .Item3;
                 return
                 AsAdvantageForWhiteIf(
                     pieceAtSquareIsWhite,
@@ -186,8 +180,8 @@ public class MyBot : IChessBot
                     : // captureChainBestAttack < 0
                         pieceAtSquareIsWhite != board.IsWhiteToMove ?
                             captureChainBestAttack
-                                // TODO likewise, value covering and non-attacks less
-                                - controlByPiece.GetValueOrDefault(pieceAtSquare).Values.Sum()
+                        // TODO likewise, value covering and non-attacks less
+                        // - controlByPiece.GetValueOrDefault(pieceAtSquare).Values.Sum()
                         : // opponent piece is attacked
                             defenseMinusAttack
                 );
@@ -236,7 +230,7 @@ public class MyBot : IChessBot
                     (AlongDirections(movementDirectionsStraight), 0.9),
                 // Queen =>
                     // queen protection not as strong because it can be chased away more easily
-                    (AlongDirections(movementNeighbors), 0.79),
+                    (AlongDirections(movementNeighbors), 0.81),
                 // King =>
                     // cause king defense is risky
                     (movementNeighbors.Select(EnumerableOne), 0.72)
@@ -283,7 +277,7 @@ public class MyBot : IChessBot
                                 , // decrease control by count of blocking pieces
                                   Pow(1 + soFar.Item2 * 2, -1.2)
                                   // decrease stability by square-distance from origin → interception tactics
-                                  * Pow(1 + soFar.Item1, -0.45)
+                                  * Pow(1 + soFar.Item1, -0.118)
                                 )
                               )
                             )
