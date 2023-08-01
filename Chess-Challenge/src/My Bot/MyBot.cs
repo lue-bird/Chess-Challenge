@@ -54,7 +54,7 @@ public class MyBot : IChessBot
                     :
                         -AfterMoveEvaluate(move)
                 );
-        Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(chosenMove));
+        Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(chosenMove)); // #DEBUG
         return chosenMove;
 
         double AfterMoveEvaluate(Move move)
