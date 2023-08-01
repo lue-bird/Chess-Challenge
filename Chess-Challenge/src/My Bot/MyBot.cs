@@ -48,42 +48,41 @@ public class MyBot : IChessBot
         //     - alpha-beta?
         Move chosenMove =
             board.IsWhiteToMove ?
-                board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(board, move))
+                board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(move))
             :
-                board.GetLegalMoves().MinBy(move => AfterMoveEvaluate(board, move));
-        Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(board, chosenMove));
+                board.GetLegalMoves().MinBy(move => AfterMoveEvaluate(move));
+
+        Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(chosenMove));
         return chosenMove;
+
+        double AfterMoveEvaluate(Move move)
+        {
+            board.MakeMove(move);
+            double evalAfterMove = BoardEvaluate(board);
+            board.UndoMove(move);
+            return evalAfterMove;
+        }
+        double BoardEvaluate(Board board) =>
+            board.IsInCheckmate() ?
+                AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
+
+            : board.IsDraw() ?
+                0
+            :
+                // TODO advanced pawns
+                // TODO past pawns
+                // TODO prefer heavies and minors near opponent king
+                // TODO advantage when pawns near king, bishop and knight only give small advantage
+                // TODO encourage covering squares near king
+                PiecesIn(board)
+                    .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
+                    + BoardControlEvaluate(board);
     }
-
-    double AfterMoveEvaluate(Board board, Move move)
-    {
-        board.MakeMove(move);
-        double evalAfterMove = BoardEvaluate(board);
-        board.UndoMove(move);
-        return evalAfterMove;
-    }
-
-    double BoardEvaluate(Board board) =>
-        board.IsInCheckmate() ?
-            AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
-
-        : board.IsDraw() ?
-            0
-        :
-            // TODO advanced pawns
-            // TODO past pawns
-            // TODO prefer heavies and minors near opponent king
-            // TODO advantage when pawns near king, bishop and knight only give small advantage
-            // TODO encourage covering squares near king
-            PiecesIn(board, BoardSquares)
-                .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
-                + BoardControlEvaluate(board);
-
 
     double BoardControlEvaluate(Board board)
     {
         var controlByPiece =
-            PiecesIn(board, BoardSquares)
+            PiecesIn(board)
                 .ToDictionary(
                     piece => piece,
                     piece => PieceControlAdvantage(board, piece)
@@ -114,16 +113,15 @@ public class MyBot : IChessBot
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attack =
                     squareControl.Except(defense);
+                IEnumerable<double> DirectOrdered(IEnumerable<(Piece, double)> controlByPieces) =>
+                    controlByPieces
+                        .Where(cover => cover.Item2 >= 0.55)
+                        .Select(cover => PieceAdvantage(cover.Item1))
+                        .OrderBy(value => value);
                 var defenders =
-                    defense
-                        .Where(cover => cover.Item2 >= 0.55)
-                        .Select(cover => PieceAdvantage(cover.Item1))
-                        .OrderBy(value => value);
+                    DirectOrdered(defense);
                 var attackers =
-                    attack
-                        .Where(cover => cover.Item2 >= 0.55)
-                        .Select(cover => PieceAdvantage(cover.Item1))
-                        .OrderBy(value => value);
+                    DirectOrdered(attack);
                 double
                     defenseAdvantage =
                         defense.Sum(s => s.Item2),
@@ -176,7 +174,8 @@ public class MyBot : IChessBot
                         // we care just a little about defending non-attacked pieces
                         defenseMinusAttack * 0.16
                     : captureChainBestAttack >= 0 ?
-                        -captureChainBestAttack * 0.34
+                        // TODO why does that not work but -captureChainBestAttack does??
+                        defenseMinusAttack * 0.34
                     : // captureChainBestAttack < 0
                         pieceAtSquareIsWhite != board.IsWhiteToMove ?
                             // TODO erase control of captured pieces
@@ -235,12 +234,20 @@ public class MyBot : IChessBot
                     (movementNeighbors.Select(EnumerableOne), 0.72)
             }
                 [(int)piece.PieceType];
-
         Dictionary<Square, double> controlBySquare = new();
+        // rays.Select(ray => doesn't save a token
         foreach (Movement ray in rays)
             // control along ray
-            // btw I wish c# had a scan/foldMap/mapAccum
-            MovementSquaresFrom(piece.Square, ray)
+            // I wish c# had a scan/foldMap/mapAccum
+            ray
+                // Convert relative coordinates from a given Square to an absolute square
+                .SelectMany(movement =>
+                    (piece.Square.File + movement.Item1, piece.Square.Rank + movement.Item2) is var (file, rank) &&
+                    file is >= 0 and <= 7 && rank is >= 0 and <= 7 ?
+                        EnumerableOne(new Square(file, rank))
+                    :
+                        new Square[] { }
+                )
                 .Select((square, index) => (index, square))
                 .Aggregate(
                     // how blocking the pieces in the way are: double
@@ -308,32 +315,12 @@ public class MyBot : IChessBot
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
         isWhite ? advantage : -advantage;
 
-    /// Convert relative coordinates from a given Square to an absolute square
-    IEnumerable<Square> MovementSquaresFrom(Square from, Movement ray) =>
-        ray
-            .SelectMany(movement =>
-            {
-                int
-                    file = from.File + movement.Item1,
-                    rank = from.Rank + movement.Item2;
-                return
-                    // new[] { file, rank }.All(coordinate => coordinate is >= 0 and <= 7)
-                    file is >= 0 and <= 7 && rank is >= 0 and <= 7
-                    ?
-                        EnumerableOne(new Square(file, rank))
-                    :
-                        // Enumerable.Empty<Square>();
-                        new Square[] { };
-            });
-
-    static int[] Signs =
-        new[] { -1, 1 };
+    static int[] Signs = { -1, 1 };
 
     static Movement movementDirectionsDiagonal =
-        // new[]
-        //     { (1, 1) , (-1, 1)
-        //     , (1, -1), (-1, -1)
-        //     };
+        // { (1, 1) , (-1, 1)
+        // , (1, -1), (-1, -1)
+        // };
         Signs.SelectMany(file => new[] { (file, 1), (file, -1) });
 
 
@@ -344,6 +331,7 @@ public class MyBot : IChessBot
         //      ,         (0, -1)
         //      };
         Signs.SelectMany(side => new[] { (side, 0), (0, side) });
+
 
     IEnumerable<Movement> AlongDirections(Movement directions) =>
         directions
@@ -381,19 +369,15 @@ public class MyBot : IChessBot
             // This number is a bit special.
             // In effect it forces king captures to be last in a capture chain.
             // Note that it doesn't weigh checkmate or king safety
-            10000
+            100
         }
             [(int)piece.PieceType];
 
     /// all pieces excluding those of PieceKind.None
-    IEnumerable<Piece> PiecesIn(Board board, IEnumerable<Square> area) =>
-        area
-            .Select(square => board.GetPiece(square))
+    IEnumerable<Piece> PiecesIn(Board board) =>
+        Enumerable.Range(0, 64)
+            .Select(squareIndex => board.GetPiece(new Square(squareIndex)))
             .Where(piece => !piece.IsNull);
-
-    /// all 64 Squares of the Board
-    IEnumerable<Square> BoardSquares =
-        Enumerable.Range(0, 64).Select(i => new Square(i));
 
     IEnumerable<A> EnumerableOne<A>(A onlyElement) =>
         new[] { onlyElement };
