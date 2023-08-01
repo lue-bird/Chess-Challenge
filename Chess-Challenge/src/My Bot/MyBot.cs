@@ -47,11 +47,13 @@ public class MyBot : IChessBot
         //     - breath first?
         //     - alpha-beta?
         Move chosenMove =
-            board.IsWhiteToMove ?
-                board.GetLegalMoves().MaxBy(move => AfterMoveEvaluate(move))
-            :
-                board.GetLegalMoves().MinBy(move => AfterMoveEvaluate(move));
-
+            board.GetLegalMoves()
+                .MaxBy(move =>
+                    board.IsWhiteToMove ?
+                        AfterMoveEvaluate(move)
+                    :
+                        -AfterMoveEvaluate(move)
+                );
         Console.WriteLine("evaluation guess: " + AfterMoveEvaluate(chosenMove));
         return chosenMove;
 
