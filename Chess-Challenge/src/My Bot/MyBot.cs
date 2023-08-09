@@ -78,10 +78,8 @@ public class MyBot : IChessBot
                 //   - rank advancement
                 //   - path to promotion square not blocked (by opponent)
                 //   - no pawns in neighboring files
-                // TODO past pawns
-                // TODO prefer heavies and minors near opponent king
+                // TODO prefer minors pieces near opponent king, rook and queen give smaller advantage
                 // TODO advantage when pawns near king, bishop and knight only give small advantage
-                // TODO encourage covering squares near king
                 PiecesIn(board)
                     .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
                     + BoardControlEvaluate(board);
@@ -252,13 +250,13 @@ public class MyBot : IChessBot
                                         // Pawn =>
                                         1.7,
                                         // Knight =>
-                                        1.1,
-                                        // Bishop =>
-                                        1.1,
-                                        // Rook =>
                                         1,
-                                        // Queen =>
+                                        // Bishop =>
+                                        1.15,
+                                        // Rook =>
                                         0.8,
+                                        // Queen =>
+                                        0.5,
                                         // King =>
                                         -0.1
                                     }
