@@ -10,9 +10,10 @@ using ChessChallenge.API;
 using Movement = System.Collections.Generic.IEnumerable<(int, int)>;
 
 /// name: massage
-/// strategy: optimize piece activity
+/// strategy: optimize activity/potential
 /// author: lue-bird on github
 /// 
+/// ---- documentation ----
 /// ## vocab used
 /// 
 /// ### Piece "controls" a Square
@@ -43,7 +44,7 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         // TODO search
-        //     - search most forcing moves first
+        //     - prioritize forcing moves (includes checks) and captures
         //     - breath first?
         //     - alpha-beta?
         Move chosenMove =
@@ -68,10 +69,15 @@ public class MyBot : IChessBot
             board.IsInCheckmate() ?
                 AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
 
-            : board.IsDraw() ?
+            : // TODO replace by
+              // board.IsInsufficientMaterial() || board.IsRepeatedPosition() || board.IsFiftyMoveRule() || legalMoves.Any()
+              board.IsDraw() ?
                 0
             :
-                // TODO advanced pawns
+                // TODO pawns:
+                //   - rank advancement
+                //   - path to promotion square not blocked (by opponent)
+                //   - no pawns in neighboring files
                 // TODO past pawns
                 // TODO prefer heavies and minors near opponent king
                 // TODO advantage when pawns near king, bishop and knight only give small advantage
@@ -100,13 +106,6 @@ public class MyBot : IChessBot
             .ToLookup(s => s.Item1, s => s.Item2)
             .Sum(squareControl =>
             {
-                // TODO attacking higher-advantage pieces → higher advantage
-                // TODO defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-                // TODO if a piece is attacked more often than defended, remove its attack control and cover from it
-                // TODO: capture chain: order both by PieceAdvantageIndependent and zip them
-                //       start with the PieceAdvantageIndependent(first attacker) - PieceAdvantageIndependent(pieceAtSquare)
-                //       if at any point the balance is negative, save and restart
-                //       |> take the biggest negative balance
                 Piece pieceAtSquare =
                     board.GetPiece(squareControl.Key);
                 bool pieceAtSquareIsWhite =
@@ -115,75 +114,31 @@ public class MyBot : IChessBot
                     squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
                 var attack =
                     squareControl.Except(defense);
-                IEnumerable<double> DirectOrdered(IEnumerable<(Piece, double)> controlByPieces) =>
-                    controlByPieces
-                        .Where(cover => cover.Item2 >= 0.55)
-                        .Select(cover => PieceAdvantage(cover.Item1))
-                        .OrderBy(value => value);
-                var defenders =
-                    DirectOrdered(defense);
-                var attackers =
-                    DirectOrdered(attack);
                 double
                     defenseAdvantage =
                         defense.Sum(s => s.Item2),
                     attackAdvantage =
                         attack.Sum(s => s.Item2),
                     defenseMinusAttack =
-                        defenseAdvantage - attackAdvantage,
-                    // direct captures, ignoring x-raying attackers and defenders
-                    // positive means the defense always has an advantage after capturing back
-                    captureChainBestAttack =
-                        Enumerable.Range(0, Max(defenders.Count(), attackers.Count()))
-                            .Aggregate(
-                                // ( material value of the piece on the focused square: double
-                                // , current material balance (positive = better for defenders): double
-                                // , best material balance found for attack capture chain: double
-                                // )
-                                (PieceAdvantage(pieceAtSquare), 0.0, 0.0),
-                                (soFar, i) =>
-                                {
-                                    double
-                                        focusValue = soFar.Item1,
-                                        attackerValue = attackers.ElementAtOrDefault(i),
-                                        defenderValue = defenders.ElementAtOrDefault(i),
-                                        newBalanceIfAttackerExists =
-                                            soFar.Item2 - focusValue
-                                            +
-                                            (defenderValue is 0 ? 0 : attackerValue);
-                                    return
-                                        attackerValue is 0 ?
-                                            (0
-                                            , soFar.Item2 + focusValue
-                                            , soFar.Item3 + focusValue
-                                            )
-                                        :
-                                            // attackerValue > 0
-                                            (defenderValue
-                                            , newBalanceIfAttackerExists
-                                            , Min(soFar.Item3, newBalanceIfAttackerExists)
-                                            );
-                                }
-                            )
-                            .Item3;
+                        defenseAdvantage - attackAdvantage;
                 return
+                // TODO
+                //   - attacking higher-advantage pieces → higher advantage
+                //   - defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
+                //   - factor in control of focused piece
                 AsAdvantageForWhiteIf(
                     pieceAtSquareIsWhite,
                     pieceAtSquare.IsNull ?
                         // we do kinda care for covered squares
                         defenseMinusAttack * 0.13
-                    : attackAdvantage <= 0.16 ?
+                    : attackAdvantage <= 0 ?
                         // we care just a little about defending non-attacked pieces
                         defenseMinusAttack * 0.16
-                    : captureChainBestAttack >= 0 ?
-                        // TODO why does that not work but -captureChainBestAttack does??
-                        defenseMinusAttack * 0.34
                     : // captureChainBestAttack < 0
                         pieceAtSquareIsWhite != board.IsWhiteToMove ?
-                            // TODO erase control of captured pieces
-                            captureChainBestAttack
-                        : // opponent piece is attacked
                             defenseMinusAttack
+                        : // opponent piece is attacked
+                            defenseMinusAttack * 0.5
                 );
             });
     }
