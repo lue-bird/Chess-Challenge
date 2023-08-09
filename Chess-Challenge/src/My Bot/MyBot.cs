@@ -44,9 +44,8 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         // TODO search
-        //     - prioritize forcing moves (includes checks) and captures
-        //     - breath first?
-        //     - alpha-beta?
+        //     - give more time to forcing moves (includes checks) and captures
+        //     - breath first-like
         Move chosenMove =
             board.GetLegalMoves()
                 .MaxBy(move =>
@@ -61,210 +60,205 @@ public class MyBot : IChessBot
         double AfterMoveEvaluate(Move move)
         {
             board.MakeMove(move);
-            double evalAfterMove = BoardEvaluate(board);
+            var legalMoves = board.GetLegalMoves();
+            // piece control advantage
+            // note that the resulting double values are positive and don't take Piece color into account
+            var controlByPiece =
+                PiecesIn(board)
+                    .ToDictionary(
+                        piece => piece,
+                        piece => 
+                        {
+                            var (rays, stability) =
+                                new[]
+                                {
+                                    // None =>
+                                        // crazy how this is even possible in c#
+                                        new(),
+                                    // Pawn =>
+                                        // passant ignored
+                                        (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
+                                    // Knight =>
+                                        (
+                                        // new[]
+                                        //     {     (-1, 2),       (1, 2)
+                                        //     , (-2, 1),              (2, 1)
+                                        // 
+                                        //     , (-2, -1),             (2, -1)
+                                        //     ,     (-1, -2),     (1, -2)
+                                        //     }
+                                        movementDirectionsDiagonal
+                                            .SelectMany(movement =>
+                                            {
+                                                var (file, rank) = movement;
+                                                return
+                                                    new[]
+                                                    { (file, rank * 2)
+                                                    , (2 * file, rank)
+                                                    };
+                                            })
+                                            .Select(EnumerableOne)
+                                        ,
+                                        // knight protection nice because it can't be intercepted
+                                        1.13
+                                        ),
+                                    // Bishop =>
+                                        (AlongDirections(movementDirectionsDiagonal), 1.01),
+                                    // Rook =>
+                                        (AlongDirections(movementDirectionsStraight), 0.9),
+                                    // Queen =>
+                                        // queen protection not as strong because it can be chased away more easily
+                                        (AlongDirections(movementNeighbors), 0.81),
+                                    // King =>
+                                        // cause king defense is risky
+                                        (movementNeighbors.Select(EnumerableOne), 0.72)
+                                }
+                                    [(int)piece.PieceType];
+                            Dictionary<Square, double> controlBySquare = new();
+                            // rays.Select(ray => doesn't save a token
+                            foreach (Movement ray in rays)
+                                // control along ray
+                                // I wish c# had a scan/foldMap/mapAccum
+                                ray
+                                    // Convert relative coordinates from a given Square to an absolute square
+                                    .SelectMany(movement =>
+                                        (piece.Square.File + movement.Item1, piece.Square.Rank + movement.Item2) is var (file, rank) &&
+                                        // alternative with equal tokens file == Clamp(file, 0, 7) && rank == Clamp(rank, 0, 7)
+                                        file is >= 0 and <= 7 && rank is >= 0 and <= 7 ?
+                                            EnumerableOne(new Square(file, rank))
+                                        :
+                                            new Square[] { }
+                                    )
+                                    .Select((square, index) => (index, square))
+                                    .Aggregate(
+                                        // how blocking the pieces in the way are: double
+                                        0.0,
+                                        (soFar, square) =>
+                                        {
+                                            controlBySquare.Add(
+                                                square.Item2,
+                                                // decrease control by count of blocking pieces
+                                                Pow(1 + soFar * 2.1, -1.3)
+                                                    // decrease stability by square-distance from origin → interception tactics
+                                                    * Pow(1.0 + square.Item1, -0.118)
+                                                    * stability
+                                            );
+                                            var pieceAtSquare = board.GetPiece(square.Item2);
+                                            return
+                                            soFar
+                                                // increase depending on piece immobility
+                                                + (pieceAtSquare.IsWhite == piece.IsWhite ?
+                                                    new[]
+                                                        {
+                                                            // None =>
+                                                            0,
+                                                            // Pawn =>
+                                                            1.9,
+                                                            // Knight =>
+                                                            0.6,
+                                                            // Bishop =>
+                                                            // bishop can look through queen
+                                                            piece.IsQueen ? 0 : 0.9,
+                                                            // Rook =>
+                                                            // rook can look through rook and queen
+                                                            piece.IsRook || piece.IsQueen ? 0 : 1,
+                                                            // Queen =>
+                                                            piece.IsBishop || piece.IsRook ? 0 : 0.8,
+                                                            // King =>
+                                                            0.8
+                                                        }
+                                                :
+                                                    // opposing color
+                                                    new[]
+                                                        {
+                                                            // None =>
+                                                            0,
+                                                            // Pawn =>
+                                                            1.7,
+                                                            // Knight =>
+                                                            1,
+                                                            // Bishop =>
+                                                            1.15,
+                                                            // Rook =>
+                                                            0.8,
+                                                            // Queen =>
+                                                            0.5,
+                                                            // King =>
+                                                            -0.1
+                                                        }
+                                                )
+                                                    [(int)pieceAtSquare.PieceType];
+                                        }
+                                    );
+                            return controlBySquare;
+                        }
+                    );
+            double evalAfterMove =
+                board.IsInCheckmate() ?
+                    AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
+
+                :
+                  // board.IsDraw
+                  board.IsInsufficientMaterial() || board.IsRepeatedPosition() || board.IsFiftyMoveDraw() || legalMoves.Any() ?
+                    0
+                :
+                    // TODO pawns:
+                    //   - rank advancement
+                    //   - path to promotion square not blocked (by opponent)
+                    //   - no pawns in neighboring files
+                    // TODO prefer minors pieces near opponent king, rook and queen give smaller advantage
+                    // TODO advantage when pawns near king, bishop and knight only give small advantage
+                    PiecesIn(board)
+                        .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
+                        + // board control
+                          controlByPiece
+                            .SelectMany(piece =>
+                                piece.Value
+                                    .Select(advantageBySquare =>
+                                        (advantageBySquare.Key, (piece.Key, advantageBySquare.Value))
+                                    )
+                            )
+                            .ToLookup(s => s.Item1, s => s.Item2)
+                            .Sum(squareControl =>
+                            {
+                                Piece pieceAtSquare =
+                                    board.GetPiece(squareControl.Key);
+                                bool pieceAtSquareIsWhite =
+                                    pieceAtSquare.IsWhite;
+                                var defense =
+                                    squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
+                                var attack =
+                                    squareControl.Except(defense);
+                                double
+                                    defenseAdvantage =
+                                        defense.Sum(s => s.Item2),
+                                    attackAdvantage =
+                                        attack.Sum(s => s.Item2),
+                                    defenseMinusAttack =
+                                        defenseAdvantage - attackAdvantage;
+                                return
+                                // TODO
+                                //   - attacking higher-advantage pieces → higher advantage
+                                //   - defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
+                                //   - factor in control of focused piece
+                                AsAdvantageForWhiteIf(
+                                    pieceAtSquareIsWhite,
+                                    pieceAtSquare.IsNull ?
+                                        // we do kinda care for covered squares
+                                        defenseMinusAttack * 0.13
+                                    : attackAdvantage <= 0 ?
+                                        // we care just a little about defending non-attacked pieces
+                                        defenseMinusAttack * 0.16
+                                    : // captureChainBestAttack < 0
+                                        pieceAtSquareIsWhite != board.IsWhiteToMove ?
+                                            defenseMinusAttack
+                                        : // opponent piece is attacked
+                                            defenseMinusAttack * 0.5
+                                );
+                            });
             board.UndoMove(move);
             return evalAfterMove;
         }
-        double BoardEvaluate(Board board) =>
-            board.IsInCheckmate() ?
-                AsAdvantageForWhiteIf(board.IsWhiteToMove, double.NegativeInfinity)
-
-            : // TODO replace by
-              // board.IsInsufficientMaterial() || board.IsRepeatedPosition() || board.IsFiftyMoveRule() || legalMoves.Any()
-              board.IsDraw() ?
-                0
-            :
-                // TODO pawns:
-                //   - rank advancement
-                //   - path to promotion square not blocked (by opponent)
-                //   - no pawns in neighboring files
-                // TODO prefer minors pieces near opponent king, rook and queen give smaller advantage
-                // TODO advantage when pawns near king, bishop and knight only give small advantage
-                PiecesIn(board)
-                    .Sum(piece => AsAdvantageForWhiteIf(piece.IsWhite, PieceAdvantage(piece)))
-                    + BoardControlEvaluate(board);
-    }
-
-    double BoardControlEvaluate(Board board)
-    {
-        var controlByPiece =
-            PiecesIn(board)
-                .ToDictionary(
-                    piece => piece,
-                    piece => PieceControlAdvantage(board, piece)
-                );
-        return
-        controlByPiece
-            .SelectMany(piece =>
-                piece.Value
-                    .Select(advantageBySquare =>
-                        (advantageBySquare.Key, (piece.Key, advantageBySquare.Value))
-                    )
-            )
-            .ToLookup(s => s.Item1, s => s.Item2)
-            .Sum(squareControl =>
-            {
-                Piece pieceAtSquare =
-                    board.GetPiece(squareControl.Key);
-                bool pieceAtSquareIsWhite =
-                    pieceAtSquare.IsWhite;
-                var defense =
-                    squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
-                var attack =
-                    squareControl.Except(defense);
-                double
-                    defenseAdvantage =
-                        defense.Sum(s => s.Item2),
-                    attackAdvantage =
-                        attack.Sum(s => s.Item2),
-                    defenseMinusAttack =
-                        defenseAdvantage - attackAdvantage;
-                return
-                // TODO
-                //   - attacking higher-advantage pieces → higher advantage
-                //   - defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
-                //   - factor in control of focused piece
-                AsAdvantageForWhiteIf(
-                    pieceAtSquareIsWhite,
-                    pieceAtSquare.IsNull ?
-                        // we do kinda care for covered squares
-                        defenseMinusAttack * 0.13
-                    : attackAdvantage <= 0 ?
-                        // we care just a little about defending non-attacked pieces
-                        defenseMinusAttack * 0.16
-                    : // captureChainBestAttack < 0
-                        pieceAtSquareIsWhite != board.IsWhiteToMove ?
-                            defenseMinusAttack
-                        : // opponent piece is attacked
-                            defenseMinusAttack * 0.5
-                );
-            });
-    }
-
-    /// note that the resulting double values are positive and don't take Piece color into account
-    Dictionary<Square, double> PieceControlAdvantage(Board board, Piece piece)
-    {
-        var (rays, stability) =
-            new[]
-            {
-                // None =>
-                    // crazy how this is even possible in c#
-                    new(),
-                // Pawn =>
-                    // passant ignored
-                    (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
-                // Knight =>
-                    (
-                    // new[]
-                    //     {     (-1, 2),       (1, 2)
-                    //     , (-2, 1),              (2, 1)
-                    // 
-                    //     , (-2, -1),             (2, -1)
-                    //     ,     (-1, -2),     (1, -2)
-                    //     }
-                    movementDirectionsDiagonal
-                        .SelectMany(movement =>
-                        {
-                            var (file, rank) = movement;
-                            return
-                                new[]
-                                { (file, rank * 2)
-                                , (2 * file, rank)
-                                };
-                        })
-                        .Select(EnumerableOne)
-                    ,
-                    // knight protection nice because it can't be intercepted
-                    1.13
-                    ),
-                // Bishop =>
-                    (AlongDirections(movementDirectionsDiagonal), 1.01),
-                // Rook =>
-                    (AlongDirections(movementDirectionsStraight), 0.9),
-                // Queen =>
-                    // queen protection not as strong because it can be chased away more easily
-                    (AlongDirections(movementNeighbors), 0.81),
-                // King =>
-                    // cause king defense is risky
-                    (movementNeighbors.Select(EnumerableOne), 0.72)
-            }
-                [(int)piece.PieceType];
-        Dictionary<Square, double> controlBySquare = new();
-        // rays.Select(ray => doesn't save a token
-        foreach (Movement ray in rays)
-            // control along ray
-            // I wish c# had a scan/foldMap/mapAccum
-            ray
-                // Convert relative coordinates from a given Square to an absolute square
-                .SelectMany(movement =>
-                    (piece.Square.File + movement.Item1, piece.Square.Rank + movement.Item2) is var (file, rank) &&
-                    file is >= 0 and <= 7 && rank is >= 0 and <= 7 ?
-                        EnumerableOne(new Square(file, rank))
-                    :
-                        new Square[] { }
-                )
-                .Select((square, index) => (index, square))
-                .Aggregate(
-                    // how blocking the pieces in the way are: double
-                    0.0,
-                    (soFar, square) =>
-                    {
-                        controlBySquare.Add(
-                            square.Item2,
-                            // decrease control by count of blocking pieces
-                            Pow(1 + soFar * 2.1, -1.3)
-                                // decrease stability by square-distance from origin → interception tactics
-                                * Pow(1.0 + square.Item1, -0.118)
-                                * stability
-                        );
-                        var pieceAtSquare = board.GetPiece(square.Item2);
-                        return
-                        soFar
-                            // increase depending on piece immobility
-                            + (pieceAtSquare.IsWhite == piece.IsWhite ?
-                                new[]
-                                    {
-                                        // None =>
-                                        0,
-                                        // Pawn =>
-                                        1.9,
-                                        // Knight =>
-                                        0.6,
-                                        // Bishop =>
-                                        // bishop can look through queen
-                                        piece.IsQueen ? 0 : 0.9,
-                                        // Rook =>
-                                        // rook can look through rook and queen
-                                        piece.IsRook || piece.IsQueen ? 0 : 1,
-                                        // Queen =>
-                                        piece.IsBishop || piece.IsRook ? 0 : 0.8,
-                                        // King =>
-                                        0.8
-                                    }
-                            :
-                                // opposing color
-                                new[]
-                                    {
-                                        // None =>
-                                        0,
-                                        // Pawn =>
-                                        1.7,
-                                        // Knight =>
-                                        1,
-                                        // Bishop =>
-                                        1.15,
-                                        // Rook =>
-                                        0.8,
-                                        // Queen =>
-                                        0.5,
-                                        // King =>
-                                        -0.1
-                                    }
-                            )
-                                [(int)pieceAtSquare.PieceType];
-                    }
-                );
-        return controlBySquare;
     }
 
     double AsAdvantageForWhiteIf(bool isWhite, double advantage) =>
