@@ -67,53 +67,53 @@ public class MyBot : IChessBot
                 PiecesIn(board)
                     .ToDictionary(
                         piece => piece,
-                        piece => 
+                        piece =>
                         {
                             var (rays, stability) =
                                 new[]
                                 {
-                                    // None =>
-                                        // crazy how this is even possible in c#
-                                        new(),
-                                    // Pawn =>
-                                        // passant ignored
-                                        (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
-                                    // Knight =>
-                                        (
-                                        // new[]
-                                        //     {     (-1, 2),       (1, 2)
-                                        //     , (-2, 1),              (2, 1)
-                                        // 
-                                        //     , (-2, -1),             (2, -1)
-                                        //     ,     (-1, -2),     (1, -2)
-                                        //     }
-                                        movementDirectionsDiagonal
-                                            .SelectMany(movement =>
+                                // None =>
+                                    // crazy how this is even possible in c#
+                                    new(),
+                                // Pawn =>
+                                    // passant ignored
+                                    (Signs.Select(file => EnumerableOne((file, piece.IsWhite ? 1 : -1))), 1.31),
+                                // Knight =>
+                                    (
+                                    // new[]
+                                    //     {     (-1, 2),       (1, 2)
+                                    //     , (-2, 1),              (2, 1)
+                                    // 
+                                    //     , (-2, -1),             (2, -1)
+                                    //     ,     (-1, -2),     (1, -2)
+                                    //     }
+                                    movementDirectionsDiagonal
+                                        .SelectMany(movement =>
+                                            movement switch { var (file,rank)
+                                            =>
+                                            new[]
                                             {
-                                                var (file, rank) = movement;
-                                                return
-                                                    new[]
-                                                    { (file, rank * 2)
-                                                    , (2 * file, rank)
-                                                    };
-                                            })
-                                            .Select(EnumerableOne)
-                                        ,
-                                        // knight protection nice because it can't be intercepted
-                                        1.13
-                                        ),
-                                    // Bishop =>
-                                        (AlongDirections(movementDirectionsDiagonal), 1.01),
-                                    // Rook =>
-                                        (AlongDirections(movementDirectionsStraight), 0.9),
-                                    // Queen =>
-                                        // queen protection not as strong because it can be chased away more easily
-                                        (AlongDirections(movementNeighbors), 0.81),
-                                    // King =>
-                                        // cause king defense is risky
-                                        (movementNeighbors.Select(EnumerableOne), 0.72)
+                                                (file, 2 * rank),
+                                                (2 * file, rank)
+                                            }}
+                                        )
+                                        .Select(EnumerableOne)
+                                    ,
+                                    // knight protection nice because it can't be intercepted
+                                    1.13
+                                    ),
+                                // Bishop =>
+                                    (AlongDirections(movementDirectionsDiagonal), 1.01),
+                                // Rook =>
+                                    (AlongDirections(movementDirectionsStraight), 0.9),
+                                // Queen =>
+                                    // queen protection not as strong because it can be chased away more easily
+                                    (AlongDirections(movementNeighbors), 0.81),
+                                // King =>
+                                    // cause king defense is risky
+                                    (movementNeighbors.Select(EnumerableOne), 0.72)
                                 }
-                                    [(int)piece.PieceType];
+                                [(int)piece.PieceType];
                             Dictionary<Square, double> controlBySquare = new();
                             // rays.Select(ray => doesn't save a token
                             foreach (Movement ray in rays)
@@ -158,12 +158,12 @@ public class MyBot : IChessBot
                                                             0.6,
                                                             // Bishop =>
                                                             // bishop can look through queen
-                                                            piece.IsQueen ? 0 : 0.9,
+                                                            piece.IsQueen ? 0.2 : 0.9,
                                                             // Rook =>
                                                             // rook can look through rook and queen
-                                                            piece.IsRook || piece.IsQueen ? 0 : 1,
+                                                            piece.IsRook || piece.IsQueen ? 0.2 : 1,
                                                             // Queen =>
-                                                            piece.IsBishop || piece.IsRook ? 0 : 0.8,
+                                                            piece.IsBishop || piece.IsRook ? 0.2 : 0.8,
                                                             // King =>
                                                             0.8
                                                         }
@@ -182,7 +182,7 @@ public class MyBot : IChessBot
                                                             // Rook =>
                                                             0.8,
                                                             // Queen =>
-                                                            0.5,
+                                                            0.45,
                                                             // King =>
                                                             -0.1
                                                         }
@@ -223,10 +223,8 @@ public class MyBot : IChessBot
                             {
                                 Piece pieceAtSquare =
                                     board.GetPiece(squareControl.Key);
-                                bool pieceAtSquareIsWhite =
-                                    pieceAtSquare.IsWhite;
                                 var defense =
-                                    squareControl.Where(control => control.Item1.IsWhite == pieceAtSquareIsWhite);
+                                    squareControl.Where(control => control.Item1.IsWhite == pieceAtSquare.IsWhite);
                                 var attack =
                                     squareControl.Except(defense);
                                 double
@@ -242,7 +240,7 @@ public class MyBot : IChessBot
                                 //   - defending higher-advantage pieces → slightly higher advantage. Especially for knight, bishop, rook
                                 //   - factor in control of focused piece
                                 AsAdvantageForWhiteIf(
-                                    pieceAtSquareIsWhite,
+                                    pieceAtSquare.IsWhite,
                                     pieceAtSquare.IsNull ?
                                         // we do kinda care for covered squares
                                         defenseMinusAttack * 0.13
@@ -250,7 +248,7 @@ public class MyBot : IChessBot
                                         // we care just a little about defending non-attacked pieces
                                         defenseMinusAttack * 0.16
                                     : // captureChainBestAttack < 0
-                                        pieceAtSquareIsWhite != board.IsWhiteToMove ?
+                                        pieceAtSquare.IsWhite != board.IsWhiteToMove ?
                                             defenseMinusAttack
                                         : // opponent piece is attacked
                                             defenseMinusAttack * 0.5
@@ -267,18 +265,18 @@ public class MyBot : IChessBot
     static int[] Signs = { -1, 1 };
 
     static Movement movementDirectionsDiagonal =
-        // { (1, 1) , (-1, 1)
-        // , (1, -1), (-1, -1)
+        // new[]
+        // { (-1,  1), (1,  1)
+        // , (-1, -1), (1, -1)
         // };
-        Signs.SelectMany(file => new[] { (file, 1), (file, -1) });
-
+        Signs.SelectMany(file => Signs.Select(rank => (file, rank)));
 
     static Movement movementDirectionsStraight =
         // new[]
-        //      {         (0,  1)
-        //      , (-1, 0),        (1, 0)
-        //      ,         (0, -1)
-        //      };
+        // {         (0,  1)
+        // , (-1, 0),        (1, 0)
+        // ,         (0, -1)
+        // };
         Signs.SelectMany(side => new[] { (side, 0), (0, side) });
 
 
